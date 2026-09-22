@@ -193,100 +193,136 @@ function approach(current, target, rate, dt){
 }
 
 //////////////////////// STEP 1: JUICE INFRASTRUCTURE ////////////////////////
-// Generic particle system. Every one-off visual effect (muzzle flash, death
-// burst, sparks) is just a call into spawnParticles() with different params,
-// instead of a bespoke array/update/draw for each effect.
-let particles = []; // {x,y,vx,vy,life,maxLife,size,color,gravity,fade,shrink}
+// Generic particle system, grouped into one object so its state (the list)
+// and behavior (spawn/update/draw) travel together instead of being three
+// loose top-level bindings. Every one-off visual effect (muzzle flash, death
+// burst, sparks) is just a call into Particles.spawn() with different params,
+// instead of a bespoke array/update/draw per effect.
+const Particles = {
+  list: [], // {x,y,vx,vy,life,maxLife,size,color,gravity,shrink}
 
-function spawnParticles(x, y, color, count, opts = {}){
-  const {
-    speedMin = 40, speedMax = 160,
-    life = 0.5,
-    size = 3,
-    spread = TAU,       // full circle by default
-    angle = 0,          // center angle for directional bursts
-    gravity = 0,
-    shrink = true
-  } = opts;
-  for(let i=0;i<count;i++){
-    const a = angle + rand(-spread/2, spread/2);
-    const spd = rand(speedMin, speedMax);
-    particles.push({
-      x, y,
-      vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
-      life, maxLife: life,
-      size: size * rand(0.7, 1.3),
-      color, gravity, shrink
-    });
-  }
-}
+  spawn(x, y, color, count, opts = {}){
+    const {
+      speedMin = 40, speedMax = 160,
+      life = 0.5,
+      size = 3,
+      spread = TAU,       // full circle by default
+      angle = 0,          // center angle for directional bursts
+      gravity = 0,
+      shrink = true
+    } = opts;
+    for(let i=0;i<count;i++){
+      const a = angle + rand(-spread/2, spread/2);
+      const spd = rand(speedMin, speedMax);
+      this.list.push({
+        x, y,
+        vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
+        life, maxLife: life,
+        size: size * rand(0.7, 1.3),
+        color, gravity, shrink
+      });
+    }
+  },
 
-function updateParticles(dt){
-  for(let i=particles.length-1;i>=0;i--){
-    const p = particles[i];
-    p.life -= dt;
-    if(p.life <= 0){ particles.splice(i,1); continue; }
-    p.vy += p.gravity*dt;
-    p.x += p.vx*dt;
-    p.y += p.vy*dt;
-    p.vx *= (1 - Math.min(1, dt*2)); // gentle drag
-    p.vy *= (1 - Math.min(1, dt*2));
-  }
-}
+  update(dt){
+    for(let i=this.list.length-1;i>=0;i--){
+      const p = this.list[i];
+      p.life -= dt;
+      if(p.life <= 0){ this.list.splice(i,1); continue; }
+      p.vy += p.gravity*dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      p.vx *= (1 - Math.min(1, dt*2)); // gentle drag
+      p.vy *= (1 - Math.min(1, dt*2));
+    }
+  },
 
-function drawParticles(){
-  for(const p of particles){
-    const t = clamp(p.life / p.maxLife, 0, 1);
-    ctx.globalAlpha = t;
-    ctx.fillStyle = p.color;
-    const r = p.shrink ? p.size * t : p.size;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, Math.max(0.4, r), 0, TAU);
-    ctx.fill();
+  draw(){
+    for(const p of this.list){
+      const t = clamp(p.life / p.maxLife, 0, 1);
+      ctx.globalAlpha = t;
+      ctx.fillStyle = p.color;
+      const r = p.shrink ? p.size * t : p.size;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.4, r), 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  reset(){
+    this.list = [];
   }
-  ctx.globalAlpha = 1;
-}
+};
 
 // Generic "bump" timer: any object (core, forge, a tower spot) can get a
 // short punchy scale-up when something good happens to it (built, upgraded,
 // repaired). draw*() functions read obj.bump to scale their transform.
-function bump(obj, amount = 1){
+function triggerBump(obj, amount = 1){
   obj.bump = amount;
 }
 function decayBump(obj, dt, rate = 6){
   if(obj.bump > 0) obj.bump = Math.max(0, obj.bump - rate*dt);
 }
-function bumpScale(obj){
+// Decays the "flash" and "bump" timers shared by every upgradeable structure
+// (core, forge, a tower spot). Replaces what used to be identical decay code
+// written out once per entity in update().
+function tickEntityTimers(obj, dt){
+  obj.flash = Math.max(0, obj.flash - dt);
+  decayBump(obj, dt);
+}
+function bumpScaleOf(obj){
   // eased pop: fast out, settle back to 1
   return 1 + (obj.bump || 0) * 0.18;
 }
 
 //////////////////////// STEP 6: SCREEN SHAKE + HIT-STOP ////////////////////////
-// Camera shake: a timed, decaying random offset applied to the whole canvas
-// for one draw pass. Triggered on core damage, a tank enemy dying, and
-// weapon upgrades — the moments that should feel like they landed.
-let shakeTimer = 0, shakeDuration = 1, shakeMag = 0;
-function triggerShake(magnitude, duration){
-  // a stronger/longer request always wins over a weaker shake already playing
-  if(magnitude >= shakeMag || shakeTimer <= 0){
-    shakeMag = magnitude;
-    shakeDuration = duration;
-    shakeTimer = duration;
-  }
-}
-function currentShakeOffset(){
-  if(shakeTimer <= 0) return { x: 0, y: 0 };
-  const t = shakeTimer / shakeDuration; // 1 -> 0
-  const mag = shakeMag * t * t; // ease out, so it settles rather than cutting off
-  return { x: rand(-mag, mag), y: rand(-mag, mag) };
-}
+// Camera: the two "impact" effects triggered by gameplay events (core
+// damage, a tank enemy dying, weapon upgrades) — grouped into one object
+// since shake and hit-stop are both "make this moment feel like it landed"
+// and are always triggered together at those call sites.
+const Camera = {
+  shakeTimer: 0, shakeDuration: 1, shakeMag: 0,
+  hitStopTimer: 0,
 
-// Hit-stop: briefly slows simulation time (rather than pausing outright) so
-// an impactful moment gets a single-frame "punch" before continuing.
-let hitStopTimer = 0;
-function triggerHitStop(duration){
-  hitStopTimer = Math.max(hitStopTimer, duration);
-}
+  // a timed, decaying random offset applied to the whole canvas for one draw pass
+  shake(magnitude, duration){
+    // a stronger/longer request always wins over a weaker shake already playing
+    if(magnitude >= this.shakeMag || this.shakeTimer <= 0){
+      this.shakeMag = magnitude;
+      this.shakeDuration = duration;
+      this.shakeTimer = duration;
+    }
+  },
+  offset(){
+    if(this.shakeTimer <= 0) return { x: 0, y: 0 };
+    const t = this.shakeTimer / this.shakeDuration; // 1 -> 0
+    const mag = this.shakeMag * t * t; // ease out, so it settles rather than cutting off
+    return { x: rand(-mag, mag), y: rand(-mag, mag) };
+  },
+  tickShake(dt){
+    this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+  },
+
+  // briefly slows simulation time (rather than pausing outright) so an
+  // impactful moment gets a single-frame "punch" before continuing
+  hitStop(duration){
+    this.hitStopTimer = Math.max(this.hitStopTimer, duration);
+  },
+  // Called once per real frame, before simulating: decays the hit-stop timer
+  // in real time and returns the dt the simulation should use this frame
+  // (a tiny fraction of real time while hit-stop is active).
+  applyHitStop(realDt){
+    if(this.hitStopTimer <= 0) return realDt;
+    this.hitStopTimer = Math.max(0, this.hitStopTimer - realDt);
+    return realDt * 0.06;
+  },
+
+  reset(){
+    this.shakeTimer = 0;
+    this.hitStopTimer = 0;
+  }
+};
 
 //////////////////////// GAME STATE ////////////////////////
 const CENTER = { x: W/2, y: H/2 };
@@ -299,7 +335,7 @@ let goldDisplay = 40; // smoothed value driving the HUD pulse
 let lastTime = 0;
 
 const keys = {};
-const mouse = { x: W/2, y: H/2, down: false, worldDown:false };
+const mouse = { x: W/2, y: H/2, down: false };
 
 const floatTexts = []; // damage/gold popups
 
@@ -426,7 +462,7 @@ function fireBullet(fromX, fromY, angle, damage, speed, life, fromTower){
     damage, life, fromTower
   });
   // muzzle flash: a couple of quick bright particles at the origin
-  spawnParticles(fromX, fromY, fromTower ? "#bcdcff" : "#fff2c4", 3, {
+  Particles.spawn(fromX, fromY, fromTower ? "#bcdcff" : "#fff2c4", 3, {
     speedMin: 20, speedMax: 70, life: 0.12, size: 2.5,
     spread: 0.9, angle, shrink: true
   });
@@ -473,24 +509,38 @@ window.addEventListener("mouseup", e => {
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
+// Every purchase in the game (repair, forge upgrade, tower build/upgrade)
+// follows the same shape: check affordability, deduct gold, then do the
+// thing. This is the one place that check-and-deduct logic lives; each call
+// site below only supplies what's unique to its own purchase. Returns
+// whether the purchase went through, in case a caller wants to know.
+function spendGold(cost, popupX, popupY, onSuccess){
+  if(gold < cost){
+    popText(popupX, popupY, "Need " + cost + "g", "#f85149");
+    return false;
+  }
+  gold -= cost;
+  onSuccess();
+  return true;
+}
+
 // try click-interaction with town objects; returns true if it consumed the click
 function tryInteract(){
   if(state !== "playing") return false;
 
   // town core
   if(dist(mouse.x, mouse.y, core.x, core.y) <= core.radius + 6){
-    if(core.hp < core.maxHp && gold >= core.repairCost){
-      gold -= core.repairCost;
+    if(core.hp >= core.maxHp){
+      popText(core.x, core.y - core.radius, "Full HP", "#8b949e");
+      return true;
+    }
+    spendGold(core.repairCost, core.x, core.y - core.radius, () => {
       core.hp = Math.min(core.maxHp, core.hp + core.repairAmount);
       core.flash = 0.3;
-      bump(core);
-      spawnParticles(core.x, core.y, "#3fb950", 10, { life:0.5, size:3, speedMin:60, speedMax:150 });
+      triggerBump(core);
+      Particles.spawn(core.x, core.y, "#3fb950", 10, { life:0.5, size:3, speedMin:60, speedMax:150 });
       popText(core.x, core.y - core.radius, "+" + core.repairAmount + " HP", "#3fb950");
-    } else if(core.hp >= core.maxHp){
-      popText(core.x, core.y - core.radius, "Full HP", "#8b949e");
-    } else {
-      popText(core.x, core.y - core.radius, "Need " + core.repairCost + "g", "#f85149");
-    }
+    });
     return true;
   }
 
@@ -500,22 +550,18 @@ function tryInteract(){
       popText(forge.x, forge.y - forge.radius, "MAX", "#8b949e");
       return true;
     }
-    const cost = forgeCost();
-    if(gold >= cost){
-      gold -= cost;
+    spendGold(forgeCost(), forge.x, forge.y - forge.radius, () => {
       forge.level++;
       player.damage = Math.round(10 * (1 + (forge.level-1)*0.35));
       player.fireRate = +(3.0 * (1 + (forge.level-1)*0.18)).toFixed(2);
       forge.flash = 0.3;
-      bump(forge);
-      spawnParticles(forge.x, forge.y, "#f0883e", 12, { life:0.55, size:3, speedMin:70, speedMax:170 });
+      triggerBump(forge);
+      Particles.spawn(forge.x, forge.y, "#f0883e", 12, { life:0.55, size:3, speedMin:70, speedMax:170 });
       popText(forge.x, forge.y - forge.radius, "Weapon Lv" + forge.level, "#58a6ff");
       // weapon upgrades get a satisfying punch, since this is the game's core reward moment
-      triggerShake(5, 0.2);
-      triggerHitStop(0.05);
-    } else {
-      popText(forge.x, forge.y - forge.radius, "Need " + cost + "g", "#f85149");
-    }
+      Camera.shake(5, 0.2);
+      Camera.hitStop(0.05);
+    });
     return true;
   }
 
@@ -523,32 +569,24 @@ function tryInteract(){
   for(const t of towerSpots){
     if(dist(mouse.x, mouse.y, t.x, t.y) <= t.radius + 8){
       if(!t.built){
-        const cost = towerBuildCost();
-        if(gold >= cost){
-          gold -= cost;
+        spendGold(towerBuildCost(), t.x, t.y - t.radius, () => {
           t.built = true; t.level = 1;
           t.flash = 0.3;
-          bump(t);
-          spawnParticles(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:60, speedMax:160 });
+          triggerBump(t);
+          Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:60, speedMax:160 });
           popText(t.x, t.y - t.radius, "Tower Built", "#58a6ff");
-        } else {
-          popText(t.x, t.y - t.radius, "Need " + cost + "g", "#f85149");
-        }
+        });
       } else if(t.level < t.maxLevel){
-        const cost = towerUpgradeCost(t);
-        if(gold >= cost){
-          gold -= cost;
+        spendGold(towerUpgradeCost(t), t.x, t.y - t.radius, () => {
           t.level++;
           t.damage = Math.round(8 * (1 + (t.level-1)*0.6));
           t.range = 170 + (t.level-1)*22;
           t.fireRate = +(1.2 * (1 + (t.level-1)*0.35)).toFixed(2);
           t.flash = 0.3;
-          bump(t);
-          spawnParticles(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:70, speedMax:170 });
+          triggerBump(t);
+          Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:70, speedMax:170 });
           popText(t.x, t.y - t.radius, "Tower Lv" + t.level, "#58a6ff");
-        } else {
-          popText(t.x, t.y - t.radius, "Need " + cost + "g", "#f85149");
-        }
+        });
       } else {
         popText(t.x, t.y - t.radius, "MAX", "#8b949e");
       }
@@ -579,15 +617,13 @@ function update(dt){
   updateGoldPickups(dt);
   updateSpawning(dt);
   updateFloatTexts(dt);
-  updateParticles(dt);
+  Particles.update(dt);
 
-  core.flash = Math.max(0, core.flash - dt);
-  forge.flash = Math.max(0, forge.flash - dt);
-  decayBump(core, dt);
-  decayBump(forge, dt);
-  for(const t of towerSpots){ t.flash = Math.max(0, t.flash - dt); decayBump(t, dt); }
+  tickEntityTimers(core, dt);
+  tickEntityTimers(forge, dt);
+  for(const t of towerSpots) tickEntityTimers(t, dt);
   player.hitFlash = Math.max(0, player.hitFlash - dt);
-  shakeTimer = Math.max(0, shakeTimer - dt);
+  Camera.tickShake(dt);
 
   // smoothed values used purely for rendering (bars, HUD pulse)
   core.displayHp = approach(core.displayHp, core.hp, 0.25, dt);
@@ -663,11 +699,11 @@ function updateBullets(dt){
         bullets.splice(i,1);
         if(e.hp <= 0){
           dropGold(e.x, e.y, e.goldMin, e.goldMax);
-          spawnParticles(e.x, e.y, e.color, 7, { life:0.45, size:3.2, speedMin:60, speedMax:200 });
+          Particles.spawn(e.x, e.y, e.color, 7, { life:0.45, size:3.2, speedMin:60, speedMax:200 });
           if(e.type === "tank"){
             // the heavier kill gets a bigger shake and a brief punch of hit-stop
-            triggerShake(7, 0.28);
-            triggerHitStop(0.06);
+            Camera.shake(7, 0.28);
+            Camera.hitStop(0.06);
           }
           enemies.splice(j,1);
         }
@@ -696,7 +732,7 @@ function updateEnemies(dt){
         popText(core.x + rand(-20,20), core.y - core.radius, "-" + e.dmgToCore, "#f85149");
         // small shake per hit; scales gently with the hit's damage but stays
         // subdued since several enemies can be attacking the core at once
-        triggerShake(2 + e.dmgToCore*0.35, 0.16);
+        Camera.shake(2 + e.dmgToCore*0.35, 0.16);
       }
     }
   }
@@ -743,7 +779,7 @@ function updateFloatTexts(dt){
 function draw(){
   ctx.clearRect(0,0,W,H);
 
-  const shake = currentShakeOffset();
+  const shake = Camera.offset();
   ctx.save();
   ctx.translate(shake.x, shake.y);
 
@@ -756,7 +792,7 @@ function draw(){
   drawEnemies();
   drawBullets();
   drawPlayer();
-  drawParticles();
+  Particles.draw();
   drawFloatTexts();
   drawVignette();
 
@@ -826,6 +862,22 @@ function sphereGradient(x, y, r, baseColor, highlight = "#ffffff"){
   return g;
 }
 
+// Shared body for every "circular upgradeable structure" (the forge, a
+// built tower): a bump-scaled, sphere-shaded circle with a stroke. Each
+// caller draws its own icon/label via drawIcon, in the same local
+// coordinate space (origin at the structure's center, already scaled).
+function drawUpgradeStructure(x, y, radius, scale, baseColor, highlightColor, strokeColor, drawIcon){
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = sphereGradient(0, 0, radius, baseColor, highlightColor);
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, radius, 0, TAU); ctx.fill(); ctx.stroke();
+  if(drawIcon) drawIcon();
+  ctx.restore();
+}
+
 // crude hex shade helper (darken/lighten by a -1..1 amount)
 function shade(hex, amt){
   const c = hex.replace("#","");
@@ -840,7 +892,7 @@ function shade(hex, amt){
 
 function drawCore(){
   const pct = core.displayHp/core.maxHp;
-  const scale = bumpScale(core);
+  const scale = bumpScaleOf(core);
   ctx.save();
   ctx.translate(core.x, core.y);
   ctx.scale(scale, scale);
@@ -878,7 +930,6 @@ function drawCore(){
 }
 
 function drawForge(){
-  const scale = bumpScale(forge);
   // step 4: pulsing warm glow behind the forge, since it's meant to be a lit/hot object
   const pulse = 0.14 + Math.sin(elapsed*2.2) * 0.05;
   const glowR = forge.radius * 3.2;
@@ -888,32 +939,23 @@ function drawForge(){
   ctx.fillStyle = glow;
   ctx.beginPath(); ctx.arc(forge.x, forge.y, glowR, 0, TAU); ctx.fill();
 
-  ctx.save();
-  ctx.translate(forge.x, forge.y);
-  ctx.scale(scale, scale);
   const baseColor = forge.flash > 0 ? "#ffd28a" : "#8a4a28";
-  ctx.fillStyle = sphereGradient(0, 0, forge.radius, baseColor, "#ffb27a");
-  ctx.strokeStyle = "#f0883e";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(0,0,forge.radius,0,TAU);
-  ctx.fill(); ctx.stroke();
-
-  // simple drawn hammer icon
-  ctx.strokeStyle = "#0d1117";
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(-forge.radius*0.3, forge.radius*0.35);
-  ctx.lineTo(forge.radius*0.3, -forge.radius*0.35);
-  ctx.stroke();
-  ctx.fillStyle = "#0d1117";
-  ctx.save();
-  ctx.translate(forge.radius*0.32, -forge.radius*0.38);
-  ctx.rotate(-Math.PI/4);
-  ctx.fillRect(-forge.radius*0.24, -forge.radius*0.14, forge.radius*0.48, forge.radius*0.28);
-  ctx.restore();
-  ctx.restore();
+  drawUpgradeStructure(forge.x, forge.y, forge.radius, bumpScaleOf(forge), baseColor, "#ffb27a", "#f0883e", () => {
+    // simple drawn hammer icon
+    ctx.strokeStyle = "#0d1117";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-forge.radius*0.3, forge.radius*0.35);
+    ctx.lineTo(forge.radius*0.3, -forge.radius*0.35);
+    ctx.stroke();
+    ctx.fillStyle = "#0d1117";
+    ctx.save();
+    ctx.translate(forge.radius*0.32, -forge.radius*0.38);
+    ctx.rotate(-Math.PI/4);
+    ctx.fillRect(-forge.radius*0.24, -forge.radius*0.14, forge.radius*0.48, forge.radius*0.28);
+    ctx.restore();
+  });
 
   ctx.fillStyle = "#e6edf3";
   ctx.font = "11px sans-serif";
@@ -923,11 +965,10 @@ function drawForge(){
 
 function drawTowerSpots(){
   for(const t of towerSpots){
-    const scale = bumpScale(t);
-    ctx.save();
-    ctx.translate(t.x, t.y);
-    ctx.scale(scale, scale);
     if(!t.built){
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.scale(bumpScaleOf(t), bumpScaleOf(t));
       ctx.strokeStyle = "rgba(255,255,255,0.35)";
       ctx.setLineDash([5,4]);
       ctx.lineWidth = 2;
@@ -937,31 +978,26 @@ function drawTowerSpots(){
       ctx.font = "bold 16px sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("+", 0, -1);
-    } else {
-      ctx.restore(); // range ring should not scale with the bump pop
-      ctx.save();
-      // range ring (subtle)
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, t.range, 0, TAU);
-      ctx.strokeStyle = "rgba(88,166,255,0.06)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
       ctx.restore();
+      continue;
+    }
 
-      ctx.save();
-      ctx.translate(t.x, t.y);
-      ctx.scale(scale, scale);
-      const baseColor = t.flash>0 ? "#bcd9ff" : "#3a5978";
-      ctx.fillStyle = sphereGradient(0, 0, t.radius, baseColor, "#cfe6ff");
-      ctx.strokeStyle = "#58a6ff";
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(0,0,t.radius,0,TAU); ctx.fill(); ctx.stroke();
+    // range ring (subtle), drawn unscaled so it doesn't pop with the bump animation
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.range, 0, TAU);
+    ctx.strokeStyle = "rgba(88,166,255,0.06)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    const baseColor = t.flash > 0 ? "#bcd9ff" : "#3a5978";
+    drawUpgradeStructure(t.x, t.y, t.radius, bumpScaleOf(t), baseColor, "#cfe6ff", "#58a6ff", () => {
       ctx.fillStyle = "#e6edf3";
       ctx.font = "bold 12px sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("L" + t.level, 0, 1);
-    }
-    ctx.restore();
+    });
   }
 }
 
@@ -1110,7 +1146,6 @@ function roundedRect(x,y,w,h,r){
 }
 
 //////////////////////// HUD ////////////////////////
-let lastGoldForPulse = gold;
 let goldPulseTimer = 0;
 function pulseGoldHud(){
   goldPulseTimer = 0.001; // trigger on next updateHud tick
@@ -1148,11 +1183,7 @@ function loop(ts){
   // hit-stop: for its duration, run the simulation at a tiny fraction of
   // real time instead of freezing it outright — reads as a "punch" beat
   // rather than a stutter, and the timer still counts down in real time.
-  let simDt = dt;
-  if(hitStopTimer > 0){
-    hitStopTimer = Math.max(0, hitStopTimer - dt);
-    simDt = dt * 0.06;
-  }
+  const simDt = Camera.applyHitStop(dt);
 
   if(state === "playing"){
     update(simDt);
@@ -1171,11 +1202,10 @@ function resetGame(){
   enemies = [];
   bullets = [];
   goldPickups = [];
-  particles = [];
+  Particles.reset();
   floatTexts.length = 0;
   spawnTimer = 2.0;
-  shakeTimer = 0;
-  hitStopTimer = 0;
+  Camera.reset();
 
   player.x = CENTER.x; player.y = CENTER.y + 90;
   player.weaponLevel = 1; player.damage = 10; player.fireRate = 3.0; player.fireCooldown = 0;
