@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+<title>Firefly Garden</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0a0e24;
+    --bg-mid: #121a3d;
+    --bg-soft: #1a2452;
+    --glow: #d4f76a;
+    --glow-soft: #a9e06a;
+    --warm: #ffb997;
+    --moon: #f4f1de;
+    --text: #e9e6f5;
+    --text-dim: #9aa0c4;
+    --fence: #2a3568;
+    --danger: #ff7a7a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: 'Nunito', sans-serif;
+    overflow-x: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    padding: clamp(16px, 4vw, 40px) 16px 32px;
+    position: relative;
+    background:
+      radial-gradient(ellipse 900px 500px at 18% -10%, rgba(244, 241, 222, 0.10), transparent 60%),
+      radial-gradient(ellipse 1200px 800px at 85% 110%, rgba(212, 247, 106, 0.06), transparent 55%),
+      linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-mid) 55%, var(--bg-deep) 100%);
+  }
+
+  /* ambient starfield + drifting fireflies, purely decorative */
+  #ambient {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .star {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: var(--moon);
+    border-radius: 50%;
+    opacity: 0.5;
+    animation: twinkle 3.2s ease-in-out infinite;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.75; }
+  }
+  .drift {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--glow);
+    box-shadow: 0 0 8px 2px var(--glow), 0 0 16px 4px rgba(212,247,106,0.4);
+    opacity: 0;
+    animation: driftfloat 14s ease-in-out infinite;
+  }
+  @keyframes driftfloat {
+    0%   { opacity: 0; transform: translate(0, 0); }
+    10%  { opacity: 0.7; }
+    50%  { transform: translate(30px, -60px); }
+    90%  { opacity: 0.5; }
+    100% { opacity: 0; transform: translate(-10px, -130px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .star, .drift { animation: none; opacity: 0.3; }
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--glow-soft);
+    opacity: 0.85;
+  }
+
+  h1 {
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 800;
+    font-size: clamp(30px, 7vw, 42px);
+    margin: 0;
+    color: var(--moon);
+    text-wrap: balance;
+    text-shadow: 0 0 24px rgba(244, 241, 222, 0.25);
+    letter-spacing: 0.01em;
+  }
+
+  .sub {
+    font-size: 14px;
+    color: var(--text-dim);
+    max-width: 40ch;
+  }
+
+  .hud {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 0 4px;
+  }
+
+  .hud-block { display: flex; flex-direction: column; gap: 2px; }
+  .hud-block.right { align-items: flex-end; }
+  .hud-label {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .hud-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--glow);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 12px rgba(212, 247, 106, 0.45);
+  }
+  .hud-value.warm { color: var(--warm); text-shadow: 0 0 12px rgba(255,185,151,0.4); }
+
+  .stage {
+    position: relative;
+    border-radius: 22px;
+    padding: 14px;
+    background: linear-gradient(160deg, var(--bg-soft), var(--bg-mid) 70%);
+    border: 1px solid rgba(212, 247, 106, 0.18);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.02) inset,
+      0 20px 60px -20px rgba(0,0,0,0.7),
+      0 0 40px -12px rgba(212, 247, 106, 0.15);
+  }
+
+  canvas {
+    display: block;
+    border-radius: 14px;
+    background: radial-gradient(ellipse at 50% 20%, #16204a 0%, #0d1330 75%);
+    touch-action: none;
+    width: min(92vw, 480px);
+    height: min(92vw, 480px);
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 14px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+    background: rgba(10, 14, 36, 0.82);
+    backdrop-filter: blur(3px);
+    padding: 20px;
+    transition: opacity 0.25s ease;
+  }
+  .overlay[hidden] { display: none; }
+
+  .overlay h2 {
+    font-family: 'Baloo 2', sans-serif;
+    font-size: clamp(22px, 5vw, 28px);
+    margin: 0;
+    color: var(--moon);
+  }
+  .overlay p {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 14px;
+    max-width: 32ch;
+    line-height: 1.5;
+  }
+  .overlay .final-score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--glow);
+    text-shadow: 0 0 16px rgba(212, 247, 106, 0.5);
+  }
+
+  button.primary {
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #0a0e24;
+    background: linear-gradient(160deg, var(--glow), var(--glow-soft));
+    border: none;
+    border-radius: 999px;
+    padding: 12px 30px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px -8px rgba(212, 247, 106, 0.6);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  button.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(212, 247, 106, 0.75); }
+  button.primary:active { transform: translateY(0); }
+  button.primary:focus-visible,
+  .pad button:focus-visible {
+    outline: 2px solid var(--moon);
+    outline-offset: 2px;
+  }
+
+  .controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 12px;
+  }
+
+  .keys-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+  .keys-hint kbd {
+    background: var(--bg-soft);
+    border: 1px solid var(--fence);
+    border-radius: 5px;
+    padding: 2px 6px;
+    color: var(--text);
+    font-family: inherit;
+  }
+
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(3, 44px);
+    gap: 6px;
+  }
+  .pad button {
+    background: var(--bg-soft);
+    border: 1px solid var(--fence);
+    border-radius: 10px;
+    color: var(--glow-soft);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .pad button:active { transform: scale(0.92); background: var(--fence); }
+  .pad .up { grid-column: 2; grid-row: 1; }
+  .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .right { grid-column: 3; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 3; }
+
+  @media (min-width: 620px) {
+    .pad { display: none; }
+  }
+
+  footer {
+    font-size: 12px;
+    color: var(--text-dim);
+    opacity: 0.7;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="ambient" aria-hidden="true"></div>
+
+<main>
+  <header>
+    <span class="kicker">a quiet night garden</span>
+    <h1>Firefly Garden</h1>
+    <p class="sub">Guide your firefly trail to gather glowing bugs before the hedgerow catches you.</p>
+  </header>
+
+  <div class="hud">
+    <div class="hud-block">
+      <span class="hud-label">Score</span>
+      <span class="hud-value" id="score">0</span>
+    </div>
+    <div class="hud-block right">
+      <span class="hud-label">Best</span>
+      <span class="hud-value warm" id="best">0</span>
+    </div>
+  </div>
+
+  <div class="stage">
+    <canvas id="game" width="480" height="480" role="img" aria-label="Firefly Garden game board"></canvas>
+
+    <div class="overlay" id="startOverlay">
+      <h2>Ready to glow?</h2>
+      <p>Use the arrow keys, WASD, or the pad below. Collect fireflies to grow your trail &mdash; don't run into the fence or yourself.</p>
+      <button class="primary" id="startBtn">Begin</button>
+    </div>
+
+    <div class="overlay" id="overOverlay" hidden>
+      <h2 id="overTitle">Lights out</h2>
+      <div class="final-score" id="finalScore">0</div>
+      <p id="overNote">Your trail met the hedgerow. Try again?</p>
+      <button class="primary" id="restartBtn">Play again</button>
+    </div>
+  </div>
+
+  <div class="controls-row">
+    <span class="keys-hint"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> or <kbd>WASD</kbd> &middot; <kbd>space</kbd> pause</span>
+    <div class="pad" aria-hidden="true">
+      <button class="up" data-dir="up" aria-label="Move up">&uarr;</button>
+      <button class="left" data-dir="left" aria-label="Move left">&larr;</button>
+      <button class="right" data-dir="right" aria-label="Move right">&rarr;</button>
+      <button class="down" data-dir="down" aria-label="Move down">&darr;</button>
+    </div>
+  </div>
+
+  <footer>Fireflies never forget a good garden &mdash; your best score lives only for this visit.</footer>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- ambient decoration ----------
+  var ambient = document.getElementById('ambient');
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < 45; i++) {
+    var s = document.createElement('div');
+    s.className = 'star';
+    s.style.left = Math.random() * 100 + 'vw';
+    s.style.top = Math.random() * 100 + 'vh';
+    s.style.animationDelay = (Math.random() * 3) + 's';
+    frag.appendChild(s);
+  }
+  for (var j = 0; j < 10; j++) {
+    var d = document.createElement('div');
+    d.className = 'drift';
+    d.style.left = (Math.random() * 100) + 'vw';
+    d.style.top = (55 + Math.random() * 40) + 'vh';
+    d.style.animationDelay = (Math.random() * 14) + 's';
+    d.style.animationDuration = (11 + Math.random() * 8) + 's';
+    frag.appendChild(d);
+  }
+  ambient.appendChild(frag);
+
+  // ---------- game setup ----------
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var GRID = 20;
+  var CELL = canvas.width / GRID;
+
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var startOverlay = document.getElementById('startOverlay');
+  var overOverlay = document.getElementById('overOverlay');
+  var overTitle = document.getElementById('overTitle');
+  var overNote = document.getElementById('overNote');
+  var finalScoreEl = document.getElementById('finalScore');
+  var startBtn = document.getElementById('startBtn');
+  var restartBtn = document.getElementById('restartBtn');
+
+  var state = 'idle'; // idle | playing | paused | over
+  var snake, dir, nextDir, food, score, best = 0, stepMs, acc, lastTime;
+  var particles = [];
+
+  function resetGame() {
+    var mid = Math.floor(GRID / 2);
+    snake = [
+      { x: mid - 1, y: mid },
+      { x: mid - 2, y: mid },
+      { x: mid - 3, y: mid }
+    ];
+    dir = { x: 1, y: 0 };
+    nextDir = { x: 1, y: 0 };
+    score = 0;
+    stepMs = 140;
+    acc = 0;
+    particles = [];
+    placeFood();
+    updateHud();
+  }
+
+  function placeFood() {
+    var free = [];
+    for (var x = 0; x < GRID; x++) {
+      for (var y = 0; y < GRID; y++) {
+        var occupied = snake.some(function (s) { return s.x === x && s.y === y; });
+        if (!occupied) free.push({ x: x, y: y });
+      }
+    }
+    food = free[Math.floor(Math.random() * free.length)];
+  }
+
+  function updateHud() {
+    scoreEl.textContent = score;
+    bestEl.textContent = best;
+  }
+
+  function setDirection(nx, ny) {
+    // prevent reversing directly into the trail
+    if (snake.length > 1 && nx === -dir.x && ny === -dir.y) return;
+    nextDir = { x: nx, y: ny };
+  }
+
+  function startGame() {
+    resetGame();
+    state = 'playing';
+    startOverlay.hidden = true;
+    overOverlay.hidden = true;
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function endGame(reason) {
+    state = 'over';
+    if (score > best) { best = score; updateHud(); }
+    overTitle.textContent = 'Lights out';
+    overNote.textContent = reason;
+    finalScoreEl.textContent = score;
+    overOverlay.hidden = false;
+  }
+
+  function step() {
+    dir = nextDir;
+    var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    if (head.x < 0 || head.y < 0 || head.x >= GRID || head.y >= GRID) {
+      endGame('The hedgerow stopped your trail at the fence line.');
+      return;
+    }
+    for (var i = 0; i < snake.length; i++) {
+      if (snake[i].x === head.x && snake[i].y === head.y) {
+        endGame('Your trail crossed itself in the dark.');
+        return;
+      }
+    }
+
+    snake.unshift(head);
+
+    if (head.x === food.x && head.y === food.y) {
+      score += 10;
+      spawnBurst(food.x, food.y);
+      if (stepMs > 70) stepMs -= 2.2;
+      placeFood();
+      updateHud();
+    } else {
+      snake.pop();
+    }
+  }
+
+  function spawnBurst(gx, gy) {
+    var cx = gx * CELL + CELL / 2;
+    var cy = gy * CELL + CELL / 2;
+    for (var i = 0; i < 10; i++) {
+      var ang = (Math.PI * 2 * i) / 10;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * (0.6 + Math.random() * 0.8),
+        vy: Math.sin(ang) * (0.6 + Math.random() * 0.8),
+        life: 1
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.x += p.vx * dt * 0.06;
+      p.y += p.vy * dt * 0.06;
+      p.life -= dt * 0.0022;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function draw(time) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // soft garden floor grid
+    ctx.save();
+    ctx.strokeStyle = 'rgba(212, 247, 106, 0.05)';
+    ctx.lineWidth = 1;
+    for (var g = 1; g < GRID; g++) {
+      ctx.beginPath();
+      ctx.moveTo(g * CELL, 0);
+      ctx.lineTo(g * CELL, canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, g * CELL);
+      ctx.lineTo(canvas.width, g * CELL);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // food: pulsing firefly
+    var pulse = 0.65 + Math.sin(time / 180) * 0.25;
+    var fx = food.x * CELL + CELL / 2;
+    var fy = food.y * CELL + CELL / 2;
+    var grad = ctx.createRadialGradient(fx, fy, 0, fx, fy, CELL * 1.4);
+    grad.addColorStop(0, 'rgba(255, 185, 151, ' + (0.9 * pulse) + ')');
+    grad.addColorStop(0.4, 'rgba(255, 185, 151, ' + (0.35 * pulse) + ')');
+    grad.addColorStop(1, 'rgba(255, 185, 151, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(fx, fy, CELL * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff3ea';
+    ctx.beginPath();
+    ctx.arc(fx, fy, CELL * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // snake
+    for (var i = snake.length - 1; i >= 0; i--) {
+      var seg = snake[i];
+      var sx = seg.x * CELL + CELL / 2;
+      var sy = seg.y * CELL + CELL / 2;
+      var t = 1 - i / snake.length;
+      var r = CELL * (i === 0 ? 0.42 : 0.32 + t * 0.06);
+
+      if (i === 0) {
+        var hgrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, CELL * 1.1);
+        hgrad.addColorStop(0, 'rgba(212, 247, 106, 0.55)');
+        hgrad.addColorStop(1, 'rgba(212, 247, 106, 0)');
+        ctx.fillStyle = hgrad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, CELL * 1.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = i === 0 ? '#e8ffb0' : 'rgba(169, 224, 106, ' + (0.55 + t * 0.4) + ')';
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // particles
+    for (var p = 0; p < particles.length; p++) {
+      var pt = particles[p];
+      ctx.fillStyle = 'rgba(255, 220, 190, ' + Math.max(pt.life, 0) + ')';
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 2.4 * pt.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function loop(time) {
+    if (state !== 'playing') return;
+    var dt = time - lastTime;
+    lastTime = time;
+    acc += dt;
+
+    updateParticles(dt);
+
+    while (acc >= stepMs) {
+      step();
+      acc -= stepMs;
+      if (state !== 'playing') break;
+    }
+
+    draw(time);
+    if (state === 'playing') requestAnimationFrame(loop);
+  }
+
+  function togglePause() {
+    if (state === 'playing') {
+      state = 'paused';
+    } else if (state === 'paused') {
+      state = 'playing';
+      lastTime = performance.now();
+      requestAnimationFrame(loop);
+    }
+  }
+
+  // ---------- input ----------
+  window.addEventListener('keydown', function (e) {
+    switch (e.key) {
+      case 'ArrowUp': case 'w': case 'W': setDirection(0, -1); e.preventDefault(); break;
+      case 'ArrowDown': case 's': case 'S': setDirection(0, 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'a': case 'A': setDirection(-1, 0); e.preventDefault(); break;
+      case 'ArrowRight': case 'd': case 'D': setDirection(1, 0); e.preventDefault(); break;
+      case ' ': togglePause(); e.preventDefault(); break;
+    }
+  });
+
+  document.querySelectorAll('.pad button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var dirMap = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+      var v = dirMap[btn.getAttribute('data-dir')];
+      setDirection(v[0], v[1]);
+    });
+  });
+
+  // swipe support on canvas
+  var touchStart = null;
+  canvas.addEventListener('touchstart', function (e) {
+    var t = e.changedTouches[0];
+    touchStart = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  canvas.addEventListener('touchend', function (e) {
+    if (!touchStart) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - touchStart.x;
+    var dy = t.clientY - touchStart.y;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (Math.abs(dx) > 20) setDirection(dx > 0 ? 1 : -1, 0);
+    } else {
+      if (Math.abs(dy) > 20) setDirection(0, dy > 0 ? 1 : -1);
+    }
+    touchStart = null;
+  }, { passive: true });
+
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+
+  // initial static frame
+  resetGame();
+  draw(0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>The Last Village</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d1117;
+    --panel:#161b22cc;
+    --border:#30363d;
+    --gold:#e3b341;
+    --hp:#3fb950;
+    --hp-low:#f85149;
+    --accent:#58a6ff;
+    --text:#e6edf3;
+    --muted:#8b949e;
+    --font-display: "Cinzel", Georgia, "Times New Roman", serif;
+  }
+  html,body{
+    margin:0; padding:0; height:100%; background:var(--bg);
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+    color:var(--text);
+    overflow:hidden;
+    user-select:none;
+  }
+  #gameWrap{
+    position:relative;
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center, #141a22 0%, #0a0d12 100%);
+  }
+  canvas{
+    background:#1b2430;
+    display:block;
+    cursor:crosshair;
+    box-shadow:0 0 60px rgba(0,0,0,0.6);
+    max-width:100vw; max-height:100vh;
+  }
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:14px 18px;
+    pointer-events:none;
+    font-size:15px;
+  }
+  .hudBox{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:8px 14px;
+    backdrop-filter: blur(4px);
+    pointer-events:auto;
+  }
+  #coreHpWrap{ width:220px; }
+  #coreHpLabel{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  #coreHpBarBg{ width:100%; height:12px; background:#2a2f38; border-radius:6px; overflow:hidden; border:1px solid var(--border); }
+  #coreHpBarFill{ height:100%; width:100%; background:var(--hp); transition: width 0.35s cubic-bezier(.3,.8,.4,1), background 0.3s; }
+
+  #goldBox{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:17px; }
+  #goldBox .icon{ color:var(--gold); font-size:19px; }
+  #goldText{ display:inline-block; transition: transform 0.15s ease-out, color 0.15s ease-out; }
+  #goldText.pulse{ transform: scale(1.35); color: var(--gold); }
+
+  #timerBox{ text-align:center; font-weight:700; font-size:20px; letter-spacing:1px; }
+  #timerBox #timerText{ font-family: var(--font-display); font-size:22px; letter-spacing:1.5px; }
+  #timerBox .sub{ font-size:11px; font-weight:400; color:var(--muted); letter-spacing:2px; }
+
+  #weaponBox{ font-size:12px; color:var(--muted); text-align:right; }
+  #weaponBox b{ color:var(--text); }
+
+  #tip{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:8px 16px; font-size:13px; color:var(--muted);
+    pointer-events:none; text-align:center; max-width:90vw;
+  }
+  #tip b{ color:var(--text); }
+
+  .overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,7,10,0.86);
+    flex-direction:column; text-align:center; padding:20px;
+  }
+  .overlay h1{ font-family: var(--font-display); font-size:46px; margin:0 0 8px 0; letter-spacing:1.5px; text-shadow:0 2px 12px rgba(0,0,0,0.5); }
+  .overlay p{ color:var(--muted); max-width:520px; line-height:1.5; margin:6px 0; }
+  .overlay .rules{ text-align:left; margin:16px 0; color:var(--text); font-size:14px; line-height:1.8; }
+  .overlay .rules div{ display:flex; gap:10px; align-items:center; }
+  .key{
+    display:inline-block; min-width:22px; text-align:center; padding:2px 7px;
+    background:#21262d; border:1px solid var(--border); border-radius:5px; font-size:12px; font-weight:700;
+  }
+  button.primary{
+    margin-top:18px; padding:12px 30px; font-size:16px; font-weight:700;
+    background:var(--accent); border:none; border-radius:8px; color:#04101f; cursor:pointer;
+  }
+  button.primary:hover{ filter:brightness(1.1); }
+  #loseTitle{ color:var(--hp-low); }
+  #winTitle{ color:var(--gold); }
+  .hidden{ display:none !important; }
+
+  .floatText{
+    position:absolute; pointer-events:none; font-weight:700; font-size:13px;
+    text-shadow:0 1px 3px rgba(0,0,0,0.8);
+  }
+
+  #promptBubble{
+    position:absolute; pointer-events:none;
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:5px 10px; font-size:12px; white-space:nowrap; transform:translate(-50%,-130%);
+    color:var(--text);
+  }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="game" width="1000" height="680"></canvas>
+
+  <div id="hud">
+    <div class="hudBox" id="coreHpWrap">
+      <div id="coreHpLabel"><span>Town Core</span><span id="coreHpText">100 / 100</span></div>
+      <div id="coreHpBarBg"><div id="coreHpBarFill"></div></div>
+    </div>
+
+    <div class="hudBox" id="timerBox">
+      <div id="timerText">10:00</div>
+      <div class="sub">SURVIVE</div>
+    </div>
+
+    <div class="hudBox" style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+      <div id="goldBox"><span class="icon">&#9679;</span><span id="goldText">0</span></div>
+      <div id="weaponBox">DMG <b id="wpnDmg">10</b> &middot; RATE <b id="wpnRate">3.0</b>/s &middot; Lv<b id="wpnLvl">1</b></div>
+    </div>
+  </div>
+
+  <div id="tip">
+    <b>WASD</b> move &middot; <b>Mouse</b> aim &middot; <b>Left-Click</b> shoot / hold to build &amp; upgrade &middot; walk near gold to collect it
+  </div>
+
+  <div id="promptBubble" class="hidden"></div>
+
+  <div class="overlay" id="startOverlay">
+    <h1>The Last Village</h1>
+    <p>Enemies are marching on the town. Shoot them down, collect their gold, and spend it in the world to build up your defenses. No menus, no pauses &mdash; just survive <b>10 minutes</b>.</p>
+    <div class="rules">
+      <div><span class="key">WASD</span> Move your character</div>
+      <div><span class="key">Mouse</span> Aim your weapon</div>
+      <div><span class="key">Click</span> Shoot enemies</div>
+      <div><span class="key">Click</span> Tower spot &rarr; build / upgrade a tower</div>
+      <div><span class="key">Click</span> Town Core &rarr; repair it when damaged</div>
+      <div><span class="key">Click</span> Forge &rarr; upgrade your weapon</div>
+    </div>
+    <button class="primary" id="startBtn">Start Game</button>
+  </div>
+
+  <div class="overlay hidden" id="endOverlay">
+    <h1 id="endTitle"></h1>
+    <p id="endText"></p>
+    <button class="primary" id="restartBtn">Play Again</button>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+//////////////////////// CANVAS / SETUP ////////////////////////
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+function fitCanvas(){
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H, 1);
+  canvas.style.width = (W*scale) + "px";
+  canvas.style.height = (H*scale) + "px";
+}
+window.addEventListener("resize", fitCanvas);
+fitCanvas();
+
+//////////////////////// UTIL ////////////////////////
+const TAU = Math.PI*2;
+function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function rand(min,max){ return min + Math.random()*(max-min); }
+function lerp(a,b,t){ return a + (b-a)*t; }
+function approach(current, target, rate, dt){
+  // exponential smoothing toward target, framerate independent
+  const t = 1 - Math.pow(1 - rate, dt*60);
+  return lerp(current, target, t);
+}
+
+//////////////////////// STEP 1: JUICE INFRASTRUCTURE ////////////////////////
+// Generic particle system. Every one-off visual effect (muzzle flash, death
+// burst, sparks) is just a call into spawnParticles() with different params,
+// instead of a bespoke array/update/draw for each effect.
+let particles = []; // {x,y,vx,vy,life,maxLife,size,color,gravity,fade,shrink}
+
+function spawnParticles(x, y, color, count, opts = {}){
+  const {
+    speedMin = 40, speedMax = 160,
+    life = 0.5,
+    size = 3,
+    spread = TAU,       // full circle by default
+    angle = 0,          // center angle for directional bursts
+    gravity = 0,
+    shrink = true
+  } = opts;
+  for(let i=0;i<count;i++){
+    const a = angle + rand(-spread/2, spread/2);
+    const spd = rand(speedMin, speedMax);
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
+      life, maxLife: life,
+      size: size * rand(0.7, 1.3),
+      color, gravity, shrink
+    });
+  }
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.life -= dt;
+    if(p.life <= 0){ particles.splice(i,1); continue; }
+    p.vy += p.gravity*dt;
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    p.vx *= (1 - Math.min(1, dt*2)); // gentle drag
+    p.vy *= (1 - Math.min(1, dt*2));
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const t = clamp(p.life / p.maxLife, 0, 1);
+    ctx.globalAlpha = t;
+    ctx.fillStyle = p.color;
+    const r = p.shrink ? p.size * t : p.size;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(0.4, r), 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Generic "bump" timer: any object (core, forge, a tower spot) can get a
+// short punchy scale-up when something good happens to it (built, upgraded,
+// repaired). draw*() functions read obj.bump to scale their transform.
+function bump(obj, amount = 1){
+  obj.bump = amount;
+}
+function decayBump(obj, dt, rate = 6){
+  if(obj.bump > 0) obj.bump = Math.max(0, obj.bump - rate*dt);
+}
+function bumpScale(obj){
+  // eased pop: fast out, settle back to 1
+  return 1 + (obj.bump || 0) * 0.18;
+}
+
+//////////////////////// STEP 6: SCREEN SHAKE + HIT-STOP ////////////////////////
+// Camera shake: a timed, decaying random offset applied to the whole canvas
+// for one draw pass. Triggered on core damage, a tank enemy dying, and
+// weapon upgrades — the moments that should feel like they landed.
+let shakeTimer = 0, shakeDuration = 1, shakeMag = 0;
+function triggerShake(magnitude, duration){
+  // a stronger/longer request always wins over a weaker shake already playing
+  if(magnitude >= shakeMag || shakeTimer <= 0){
+    shakeMag = magnitude;
+    shakeDuration = duration;
+    shakeTimer = duration;
+  }
+}
+function currentShakeOffset(){
+  if(shakeTimer <= 0) return { x: 0, y: 0 };
+  const t = shakeTimer / shakeDuration; // 1 -> 0
+  const mag = shakeMag * t * t; // ease out, so it settles rather than cutting off
+  return { x: rand(-mag, mag), y: rand(-mag, mag) };
+}
+
+// Hit-stop: briefly slows simulation time (rather than pausing outright) so
+// an impactful moment gets a single-frame "punch" before continuing.
+let hitStopTimer = 0;
+function triggerHitStop(duration){
+  hitStopTimer = Math.max(hitStopTimer, duration);
+}
+
+//////////////////////// GAME STATE ////////////////////////
+const CENTER = { x: W/2, y: H/2 };
+const GAME_LENGTH = 600; // 10 minutes in seconds
+
+let state = "menu"; // menu | playing | won | lost
+let elapsed = 0;
+let gold = 40;
+let goldDisplay = 40; // smoothed value driving the HUD pulse
+let lastTime = 0;
+
+const keys = {};
+const mouse = { x: W/2, y: H/2, down: false, worldDown:false };
+
+const floatTexts = []; // damage/gold popups
+
+//////////////////////// PLAYER ////////////////////////
+const player = {
+  x: CENTER.x, y: CENTER.y + 90,
+  radius: 14,
+  speed: 220,
+  weaponLevel: 1,
+  damage: 10,
+  fireRate: 3.0,      // shots per second
+  bulletSpeed: 560,
+  range: 480,
+  fireCooldown: 0,
+  hitFlash: 0,
+  bobPhase: rand(0, TAU)
+};
+
+//////////////////////// TOWN CORE ////////////////////////
+const core = {
+  x: CENTER.x, y: CENTER.y,
+  radius: 34,
+  maxHp: 100,
+  hp: 100,
+  displayHp: 100, // smoothed for drawing
+  repairCost: 25,
+  repairAmount: 30,
+  flash: 0,
+  bump: 0
+};
+
+//////////////////////// FORGE ////////////////////////
+const forge = {
+  x: CENTER.x - 150, y: CENTER.y - 70,
+  radius: 22,
+  level: 1,
+  maxLevel: 5,
+  flash: 0,
+  bump: 0
+};
+function forgeCost(){ return 30 + (forge.level-1) * 35; }
+
+//////////////////////// TOWER SPOTS ////////////////////////
+const TOWER_COUNT = 4;
+const towerSpots = [];
+{
+  const towerRadius = 190;
+  const angles = [ -Math.PI/2 + 0.5, Math.PI/2 - 0.5, Math.PI + 0.6, -0.6 ];
+  for(let i=0;i<TOWER_COUNT;i++){
+    const a = angles[i];
+    towerSpots.push({
+      x: CENTER.x + Math.cos(a)*towerRadius,
+      y: CENTER.y + Math.sin(a)*towerRadius,
+      radius: 20,
+      built:false,
+      level:0,
+      maxLevel:3,
+      damage: 8,
+      range: 170,
+      fireRate: 1.2,
+      cooldown: 0,
+      flash: 0,
+      bump: 0
+    });
+  }
+}
+function towerBuildCost(){ return 20; }
+function towerUpgradeCost(t){ return 25 + t.level*25; }
+
+//////////////////////// ENEMIES ////////////////////////
+const ENEMY_TYPES = {
+  fast:  { hp: 18, speed: 130, dmgToCore: 4, radius: 10, color: "#f0883e", goldMin:2, goldMax:4, attackInterval:0.6 },
+  tank:  { hp: 60, speed: 55,  dmgToCore: 12, radius: 16, color: "#a371f7", goldMin:5, goldMax:9, attackInterval:1.0 }
+};
+let enemies = [];
+let spawnTimer = 2.0;
+
+function currentSpawnInterval(){
+  // starts slow, ramps up, floors out
+  const t = elapsed;
+  const base = 2.4;
+  const min = 0.45;
+  const interval = base - (base-min) * clamp(t/420, 0, 1);
+  return interval;
+}
+function tankChance(){
+  return clamp(0.12 + elapsed/500, 0.12, 0.55);
+}
+function difficultyMul(){
+  return 1 + clamp(elapsed/300, 0, 1.6);
+}
+
+function spawnEnemy(){
+  const type = Math.random() < tankChance() ? "tank" : "fast";
+  const def = ENEMY_TYPES[type];
+  const spawnRadius = Math.hypot(W,H)/2 + 60;
+  const a = rand(0, TAU);
+  const mul = difficultyMul();
+  enemies.push({
+    type,
+    x: CENTER.x + Math.cos(a)*spawnRadius,
+    y: CENTER.y + Math.sin(a)*spawnRadius,
+    hp: def.hp * (0.85 + mul*0.35),
+    maxHp: def.hp * (0.85 + mul*0.35),
+    speed: def.speed,
+    dmgToCore: def.dmgToCore,
+    radius: def.radius,
+    color: def.color,
+    goldMin: def.goldMin, goldMax: def.goldMax,
+    attackInterval: def.attackInterval,
+    attackTimer: 0,
+    hitFlash:0,
+    bobPhase: rand(0, TAU)
+  });
+}
+
+//////////////////////// BULLETS ////////////////////////
+let bullets = []; // {x,y,vx,vy,damage,life,fromTower}
+
+function fireBullet(fromX, fromY, angle, damage, speed, life, fromTower){
+  bullets.push({
+    x: fromX, y: fromY,
+    vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+    damage, life, fromTower
+  });
+  // muzzle flash: a couple of quick bright particles at the origin
+  spawnParticles(fromX, fromY, fromTower ? "#bcdcff" : "#fff2c4", 3, {
+    speedMin: 20, speedMax: 70, life: 0.12, size: 2.5,
+    spread: 0.9, angle, shrink: true
+  });
+}
+
+//////////////////////// GOLD PICKUPS ////////////////////////
+let goldPickups = []; // {x,y,value,vx,vy}
+
+function dropGold(x,y,min,max){
+  const value = Math.round(rand(min,max));
+  goldPickups.push({ x: x + rand(-8,8), y: y + rand(-8,8), value });
+}
+
+//////////////////////// INPUT ////////////////////////
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function canvasToWorld(clientX, clientY){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
+canvas.addEventListener("mousemove", e => {
+  const p = canvasToWorld(e.clientX, e.clientY);
+  mouse.x = p.x; mouse.y = p.y;
+});
+canvas.addEventListener("mousedown", e => {
+  if(e.button !== 0) return;
+  mouse.down = true;
+  tryInteract();
+});
+window.addEventListener("mouseup", e => {
+  if(e.button !== 0) return;
+  mouse.down = false;
+});
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+// try click-interaction with town objects; returns true if it consumed the click
+function tryInteract(){
+  if(state !== "playing") return false;
+
+  // town core
+  if(dist(mouse.x, mouse.y, core.x, core.y) <= core.radius + 6){
+    if(core.hp < core.maxHp && gold >= core.repairCost){
+      gold -= core.repairCost;
+      core.hp = Math.min(core.maxHp, core.hp + core.repairAmount);
+      core.flash = 0.3;
+      bump(core);
+      spawnParticles(core.x, core.y, "#3fb950", 10, { life:0.5, size:3, speedMin:60, speedMax:150 });
+      popText(core.x, core.y - core.radius, "+" + core.repairAmount + " HP", "#3fb950");
+    } else if(core.hp >= core.maxHp){
+      popText(core.x, core.y - core.radius, "Full HP", "#8b949e");
+    } else {
+      popText(core.x, core.y - core.radius, "Need " + core.repairCost + "g", "#f85149");
+    }
+    return true;
+  }
+
+  // forge
+  if(dist(mouse.x, mouse.y, forge.x, forge.y) <= forge.radius + 6){
+    if(forge.level >= forge.maxLevel){
+      popText(forge.x, forge.y - forge.radius, "MAX", "#8b949e");
+      return true;
+    }
+    const cost = forgeCost();
+    if(gold >= cost){
+      gold -= cost;
+      forge.level++;
+      player.damage = Math.round(10 * (1 + (forge.level-1)*0.35));
+      player.fireRate = +(3.0 * (1 + (forge.level-1)*0.18)).toFixed(2);
+      forge.flash = 0.3;
+      bump(forge);
+      spawnParticles(forge.x, forge.y, "#f0883e", 12, { life:0.55, size:3, speedMin:70, speedMax:170 });
+      popText(forge.x, forge.y - forge.radius, "Weapon Lv" + forge.level, "#58a6ff");
+      // weapon upgrades get a satisfying punch, since this is the game's core reward moment
+      triggerShake(5, 0.2);
+      triggerHitStop(0.05);
+    } else {
+      popText(forge.x, forge.y - forge.radius, "Need " + cost + "g", "#f85149");
+    }
+    return true;
+  }
+
+  // tower spots
+  for(const t of towerSpots){
+    if(dist(mouse.x, mouse.y, t.x, t.y) <= t.radius + 8){
+      if(!t.built){
+        const cost = towerBuildCost();
+        if(gold >= cost){
+          gold -= cost;
+          t.built = true; t.level = 1;
+          t.flash = 0.3;
+          bump(t);
+          spawnParticles(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:60, speedMax:160 });
+          popText(t.x, t.y - t.radius, "Tower Built", "#58a6ff");
+        } else {
+          popText(t.x, t.y - t.radius, "Need " + cost + "g", "#f85149");
+        }
+      } else if(t.level < t.maxLevel){
+        const cost = towerUpgradeCost(t);
+        if(gold >= cost){
+          gold -= cost;
+          t.level++;
+          t.damage = Math.round(8 * (1 + (t.level-1)*0.6));
+          t.range = 170 + (t.level-1)*22;
+          t.fireRate = +(1.2 * (1 + (t.level-1)*0.35)).toFixed(2);
+          t.flash = 0.3;
+          bump(t);
+          spawnParticles(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:70, speedMax:170 });
+          popText(t.x, t.y - t.radius, "Tower Lv" + t.level, "#58a6ff");
+        } else {
+          popText(t.x, t.y - t.radius, "Need " + cost + "g", "#f85149");
+        }
+      } else {
+        popText(t.x, t.y - t.radius, "MAX", "#8b949e");
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function popText(x,y,text,color){
+  floatTexts.push({ x, y, text, color, life:1.0, vy:-30 });
+}
+
+//////////////////////// UPDATE ////////////////////////
+function update(dt){
+  elapsed += dt;
+  if(elapsed >= GAME_LENGTH){
+    endGame(true);
+    return;
+  }
+
+  updatePlayer(dt);
+  updateShooting(dt);
+  updateTowers(dt);
+  updateBullets(dt);
+  updateEnemies(dt);
+  updateGoldPickups(dt);
+  updateSpawning(dt);
+  updateFloatTexts(dt);
+  updateParticles(dt);
+
+  core.flash = Math.max(0, core.flash - dt);
+  forge.flash = Math.max(0, forge.flash - dt);
+  decayBump(core, dt);
+  decayBump(forge, dt);
+  for(const t of towerSpots){ t.flash = Math.max(0, t.flash - dt); decayBump(t, dt); }
+  player.hitFlash = Math.max(0, player.hitFlash - dt);
+  shakeTimer = Math.max(0, shakeTimer - dt);
+
+  // smoothed values used purely for rendering (bars, HUD pulse)
+  core.displayHp = approach(core.displayHp, core.hp, 0.25, dt);
+  goldDisplay = approach(goldDisplay, gold, 0.35, dt);
+
+  if(core.hp <= 0){
+    core.hp = 0;
+    endGame(false);
+  }
+}
+
+function updatePlayer(dt){
+  let dx = 0, dy = 0;
+  if(keys["w"] || keys["arrowup"]) dy -= 1;
+  if(keys["s"] || keys["arrowdown"]) dy += 1;
+  if(keys["a"] || keys["arrowleft"]) dx -= 1;
+  if(keys["d"] || keys["arrowright"]) dx += 1;
+  if(dx !== 0 || dy !== 0){
+    const len = Math.hypot(dx,dy);
+    dx /= len; dy /= len;
+    player.x = clamp(player.x + dx*player.speed*dt, player.radius, W-player.radius);
+    player.y = clamp(player.y + dy*player.speed*dt, player.radius, H-player.radius);
+  }
+}
+
+function updateShooting(dt){
+  player.fireCooldown -= dt;
+  if(mouse.down && player.fireCooldown <= 0){
+    // if the mouse is currently over an interactive object, don't fire (keep it a build/upgrade click)
+    const overObject =
+      dist(mouse.x, mouse.y, core.x, core.y) <= core.radius + 6 ||
+      dist(mouse.x, mouse.y, forge.x, forge.y) <= forge.radius + 6 ||
+      towerSpots.some(t => dist(mouse.x, mouse.y, t.x, t.y) <= t.radius + 8);
+
+    if(!overObject){
+      const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+      fireBullet(player.x, player.y, angle, player.damage, player.bulletSpeed, player.range/player.bulletSpeed, false);
+      player.fireCooldown = 1/player.fireRate;
+    }
+  }
+}
+
+function updateTowers(dt){
+  for(const t of towerSpots){
+    if(!t.built) continue;
+    t.cooldown -= dt;
+    if(t.cooldown > 0) continue;
+    let target = null, best = Infinity;
+    for(const e of enemies){
+      const d = dist(t.x,t.y,e.x,e.y);
+      if(d <= t.range && d < best){ best = d; target = e; }
+    }
+    if(target){
+      const angle = Math.atan2(target.y - t.y, target.x - t.x);
+      fireBullet(t.x, t.y, angle, t.damage, 480, t.range/480, true);
+      t.cooldown = 1/t.fireRate;
+    }
+  }
+}
+
+function updateBullets(dt){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
+    if(b.life <= 0 || b.x < -20 || b.x > W+20 || b.y < -20 || b.y > H+20){
+      bullets.splice(i,1); continue;
+    }
+    for(let j=enemies.length-1;j>=0;j--){
+      const e = enemies[j];
+      if(dist(b.x,b.y,e.x,e.y) <= e.radius + 4){
+        e.hp -= b.damage;
+        e.hitFlash = 0.12;
+        bullets.splice(i,1);
+        if(e.hp <= 0){
+          dropGold(e.x, e.y, e.goldMin, e.goldMax);
+          spawnParticles(e.x, e.y, e.color, 7, { life:0.45, size:3.2, speedMin:60, speedMax:200 });
+          if(e.type === "tank"){
+            // the heavier kill gets a bigger shake and a brief punch of hit-stop
+            triggerShake(7, 0.28);
+            triggerHitStop(0.06);
+          }
+          enemies.splice(j,1);
+        }
+        break;
+      }
+    }
+  }
+}
+
+function updateEnemies(dt){
+  for(let i=enemies.length-1;i>=0;i--){
+    const e = enemies[i];
+    e.hitFlash = Math.max(0, e.hitFlash - dt);
+    const d = dist(e.x,e.y,core.x,core.y);
+    const stopDist = core.radius + e.radius + 4;
+    if(d > stopDist){
+      const angle = Math.atan2(core.y-e.y, core.x-e.x);
+      e.x += Math.cos(angle)*e.speed*dt;
+      e.y += Math.sin(angle)*e.speed*dt;
+    } else {
+      e.attackTimer -= dt;
+      if(e.attackTimer <= 0){
+        core.hp -= e.dmgToCore;
+        core.flash = 0.25;
+        e.attackTimer = e.attackInterval;
+        popText(core.x + rand(-20,20), core.y - core.radius, "-" + e.dmgToCore, "#f85149");
+        // small shake per hit; scales gently with the hit's damage but stays
+        // subdued since several enemies can be attacking the core at once
+        triggerShake(2 + e.dmgToCore*0.35, 0.16);
+      }
+    }
+  }
+}
+
+function updateGoldPickups(dt){
+  for(let i=goldPickups.length-1;i>=0;i--){
+    const g = goldPickups[i];
+    const d = dist(g.x,g.y,player.x,player.y);
+    if(d < 90){
+      // magnet toward player
+      const angle = Math.atan2(player.y-g.y, player.x-g.x);
+      const pull = clamp((90-d)/90, 0, 1) * 420;
+      g.x += Math.cos(angle)*pull*dt;
+      g.y += Math.sin(angle)*pull*dt;
+    }
+    if(d < player.radius + 10){
+      gold += g.value;
+      popText(player.x, player.y - 24, "+" + g.value, "#e3b341");
+      pulseGoldHud();
+      goldPickups.splice(i,1);
+    }
+  }
+}
+
+function updateSpawning(dt){
+  spawnTimer -= dt;
+  if(spawnTimer <= 0){
+    spawnEnemy();
+    spawnTimer = currentSpawnInterval();
+  }
+}
+
+function updateFloatTexts(dt){
+  for(let i=floatTexts.length-1;i>=0;i--){
+    const f = floatTexts[i];
+    f.life -= dt*0.9;
+    f.y += f.vy*dt;
+    if(f.life <= 0) floatTexts.splice(i,1);
+  }
+}
+
+//////////////////////// DRAW ////////////////////////
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  const shake = currentShakeOffset();
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+
+  drawGround();
+  drawShadows();
+  drawTowerSpots();
+  drawForge();
+  drawCore();
+  drawGoldPickups();
+  drawEnemies();
+  drawBullets();
+  drawPlayer();
+  drawParticles();
+  drawFloatTexts();
+  drawVignette();
+
+  ctx.restore();
+  drawHoverPrompt(); // screen-space DOM overlay, not part of the shaking world
+}
+
+function drawGround(){
+  ctx.fillStyle = "#1b2430";
+  ctx.fillRect(0,0,W,H);
+
+  // step 4: warm tint inside the town boundary vs. the colder wilderness beyond it
+  const zoneGrad = ctx.createRadialGradient(CENTER.x, CENTER.y, 0, CENTER.x, CENTER.y, 230);
+  zoneGrad.addColorStop(0, "rgba(80,64,38,0.35)");
+  zoneGrad.addColorStop(0.75, "rgba(60,52,40,0.12)");
+  zoneGrad.addColorStop(1, "rgba(60,52,40,0)");
+  ctx.fillStyle = zoneGrad;
+  ctx.beginPath(); ctx.arc(CENTER.x, CENTER.y, 230, 0, TAU); ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.03)";
+  ctx.lineWidth = 1;
+  const grid = 50;
+  for(let x=0;x<=W;x+=grid){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for(let y=0;y<=H;y+=grid){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  // town boundary ring
+  ctx.beginPath();
+  ctx.arc(CENTER.x, CENTER.y, 230, 0, TAU);
+  ctx.strokeStyle = "rgba(227,179,65,0.25)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// step 2: soft grounding shadow, shared by every entity that stands on the ground
+function drawShadow(x, y, rx, ry, alpha = 0.35){
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(x, y + ry*0.15, rx, ry, 0, 0, TAU);
+  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawShadows(){
+  // ground shadows for everything that "stands" in the world, drawn in one
+  // pass beneath all entities so nothing has to manage its own shadow order
+  for(const t of towerSpots){
+    if(t.built) drawShadow(t.x, t.y + t.radius*0.55, t.radius*0.9, t.radius*0.32, 0.4);
+  }
+  drawShadow(forge.x, forge.y + forge.radius*0.55, forge.radius*0.9, forge.radius*0.32, 0.4);
+  drawShadow(core.x, core.y + core.radius*0.7, core.radius*1.05, core.radius*0.35, 0.42);
+  for(const e of enemies){
+    drawShadow(e.x, e.y + e.radius*0.55, e.radius*0.85, e.radius*0.3, 0.35);
+  }
+  drawShadow(player.x, player.y + player.radius*0.6, player.radius*0.85, player.radius*0.3, 0.4);
+}
+
+// small helper: a radial gradient fill that reads as a lit sphere instead of a flat disc
+function sphereGradient(x, y, r, baseColor, highlight = "#ffffff"){
+  const g = ctx.createRadialGradient(x - r*0.35, y - r*0.4, r*0.1, x, y, r);
+  g.addColorStop(0, highlight);
+  g.addColorStop(0.35, baseColor);
+  g.addColorStop(1, shade(baseColor, -0.25));
+  return g;
+}
+
+// crude hex shade helper (darken/lighten by a -1..1 amount)
+function shade(hex, amt){
+  const c = hex.replace("#","");
+  const num = parseInt(c.length===3 ? c.split("").map(ch=>ch+ch).join("") : c, 16);
+  let r = (num >> 16) & 0xff, g = (num >> 8) & 0xff, b = num & 0xff;
+  const f = amt < 0 ? amt+1 : amt;
+  r = amt < 0 ? r*f : r + (255-r)*amt;
+  g = amt < 0 ? g*f : g + (255-g)*amt;
+  b = amt < 0 ? b*f : b + (255-b)*amt;
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+
+function drawCore(){
+  const pct = core.displayHp/core.maxHp;
+  const scale = bumpScale(core);
+  ctx.save();
+  ctx.translate(core.x, core.y);
+  ctx.scale(scale, scale);
+
+  const baseColor = core.flash > 0 ? "#ffb3ab" : "#7a5c34";
+  const grad = ctx.createLinearGradient(-core.radius, -core.radius, core.radius, core.radius);
+  grad.addColorStop(0, shade(baseColor, 0.35));
+  grad.addColorStop(0.5, baseColor);
+  grad.addColorStop(1, shade(baseColor, -0.3));
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = "#e3b341";
+  ctx.lineWidth = 3;
+  roundedRect(-core.radius, -core.radius, core.radius*2, core.radius*2, 8);
+  ctx.fill(); ctx.stroke();
+
+  // simple drawn house-roof icon instead of a font-dependent glyph
+  ctx.fillStyle = "#0d1117";
+  ctx.beginPath();
+  ctx.moveTo(-core.radius*0.42, core.radius*0.18);
+  ctx.lineTo(0, -core.radius*0.42);
+  ctx.lineTo(core.radius*0.42, core.radius*0.18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(-core.radius*0.26, core.radius*0.18, core.radius*0.52, core.radius*0.32);
+  ctx.restore();
+
+  // mini hp ring
+  ctx.save();
+  ctx.translate(core.x, core.y - core.radius - 14);
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  roundedRect(-26,-5,52,9,4); ctx.fill();
+  ctx.fillStyle = pct > 0.3 ? "#3fb950" : "#f85149";
+  roundedRect(-25,-4, 50*pct, 7, 3); ctx.fill();
+  ctx.restore();
+}
+
+function drawForge(){
+  const scale = bumpScale(forge);
+  // step 4: pulsing warm glow behind the forge, since it's meant to be a lit/hot object
+  const pulse = 0.14 + Math.sin(elapsed*2.2) * 0.05;
+  const glowR = forge.radius * 3.2;
+  const glow = ctx.createRadialGradient(forge.x, forge.y, 0, forge.x, forge.y, glowR);
+  glow.addColorStop(0, `rgba(240,136,62,${pulse})`);
+  glow.addColorStop(1, "rgba(240,136,62,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(forge.x, forge.y, glowR, 0, TAU); ctx.fill();
+
+  ctx.save();
+  ctx.translate(forge.x, forge.y);
+  ctx.scale(scale, scale);
+  const baseColor = forge.flash > 0 ? "#ffd28a" : "#8a4a28";
+  ctx.fillStyle = sphereGradient(0, 0, forge.radius, baseColor, "#ffb27a");
+  ctx.strokeStyle = "#f0883e";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0,0,forge.radius,0,TAU);
+  ctx.fill(); ctx.stroke();
+
+  // simple drawn hammer icon
+  ctx.strokeStyle = "#0d1117";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-forge.radius*0.3, forge.radius*0.35);
+  ctx.lineTo(forge.radius*0.3, -forge.radius*0.35);
+  ctx.stroke();
+  ctx.fillStyle = "#0d1117";
+  ctx.save();
+  ctx.translate(forge.radius*0.32, -forge.radius*0.38);
+  ctx.rotate(-Math.PI/4);
+  ctx.fillRect(-forge.radius*0.24, -forge.radius*0.14, forge.radius*0.48, forge.radius*0.28);
+  ctx.restore();
+  ctx.restore();
+
+  ctx.fillStyle = "#e6edf3";
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Forge Lv" + forge.level, forge.x, forge.y + forge.radius + 14);
+}
+
+function drawTowerSpots(){
+  for(const t of towerSpots){
+    const scale = bumpScale(t);
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.scale(scale, scale);
+    if(!t.built){
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.setLineDash([5,4]);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0,0,t.radius,0,TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.font = "bold 16px sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("+", 0, -1);
+    } else {
+      ctx.restore(); // range ring should not scale with the bump pop
+      ctx.save();
+      // range ring (subtle)
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.range, 0, TAU);
+      ctx.strokeStyle = "rgba(88,166,255,0.06)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.scale(scale, scale);
+      const baseColor = t.flash>0 ? "#bcd9ff" : "#3a5978";
+      ctx.fillStyle = sphereGradient(0, 0, t.radius, baseColor, "#cfe6ff");
+      ctx.strokeStyle = "#58a6ff";
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0,0,t.radius,0,TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#e6edf3";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("L" + t.level, 0, 1);
+    }
+    ctx.restore();
+  }
+}
+
+function drawGoldPickups(){
+  for(const g of goldPickups){
+    ctx.save();
+    ctx.translate(g.x,g.y);
+    ctx.fillStyle = sphereGradient(0, 0, 6, "#e3b341", "#fff3c4");
+    ctx.strokeStyle = "#8a6a1c";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0,0,6,0,TAU); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawEnemies(){
+  for(const e of enemies){
+    const bob = Math.sin(elapsed*6 + e.bobPhase) * (e.radius*0.08);
+    ctx.save();
+    ctx.translate(e.x, e.y + bob);
+    ctx.fillStyle = e.hitFlash > 0 ? "#ffffff" : sphereGradient(0, 0, e.radius, e.color, "#ffffff");
+    ctx.beginPath(); ctx.arc(0,0,e.radius,0,TAU); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+
+    // hp bar
+    const w = e.radius*2;
+    const pct = clamp(e.hp/e.maxHp,0,1);
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(e.x-w/2, e.y-e.radius-9, w, 4);
+    ctx.fillStyle = pct > 0.35 ? "#3fb950" : "#f85149";
+    ctx.fillRect(e.x-w/2, e.y-e.radius-9, w*pct, 4);
+  }
+}
+
+function drawBullets(){
+  for(const b of bullets){
+    const color = b.fromTower ? "#79c0ff" : "#ffe08a";
+    ctx.save();
+    ctx.translate(b.x,b.y);
+    // step 2/3: soft glow trail instead of a flat dot
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = color;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(0,0, b.fromTower?3:3.5, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    // short fading trail behind the bullet along its direction of travel
+    const back = Math.atan2(-b.vy, -b.vx);
+    const tx = b.x + Math.cos(back)*7, ty = b.y + Math.sin(back)*7;
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(tx, ty, 1.6, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawPlayer(){
+  const angle = Math.atan2(mouse.y-player.y, mouse.x-player.x);
+  const bob = Math.sin(elapsed*5 + player.bobPhase) * (player.radius*0.06);
+  ctx.save();
+  ctx.translate(player.x, player.y + bob);
+
+  // gun direction indicator
+  ctx.rotate(angle);
+  ctx.fillStyle = "#8b949e";
+  ctx.fillRect(6, -3, 16, 6);
+  ctx.rotate(-angle);
+
+  ctx.fillStyle = player.hitFlash > 0 ? "#ffffff" : sphereGradient(0, 0, player.radius, "#3f8ee8", "#bcdcff");
+  ctx.strokeStyle = "#1f6feb";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0,0,player.radius,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawFloatTexts(){
+  ctx.font = "bold 13px sans-serif";
+  ctx.textAlign = "center";
+  for(const f of floatTexts){
+    ctx.globalAlpha = clamp(f.life,0,1);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// step 2: composed frame — soft radial vignette drawn last, over everything
+function drawVignette(){
+  const g = ctx.createRadialGradient(W/2, H/2, H*0.35, W/2, H/2, H*0.75);
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(0,0,0,0.45)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+}
+
+function drawHoverPrompt(){
+  const bubble = document.getElementById("promptBubble");
+  if(state !== "playing"){ bubble.classList.add("hidden"); return; }
+
+  let label = null, sx=0, sy=0;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / W, scaleY = rect.height / H;
+
+  function toScreen(x,y){ return { x: rect.left + x*scaleX, y: rect.top + y*scaleY }; }
+
+  if(dist(mouse.x,mouse.y,core.x,core.y) <= core.radius+6){
+    const p = toScreen(core.x, core.y - core.radius - 22);
+    label = core.hp>=core.maxHp ? "Full HP" : ("Repair — " + core.repairCost + "g (+" + core.repairAmount + " HP)");
+    sx=p.x; sy=p.y;
+  } else if(dist(mouse.x,mouse.y,forge.x,forge.y) <= forge.radius+6){
+    const p = toScreen(forge.x, forge.y - forge.radius - 22);
+    label = forge.level>=forge.maxLevel ? "Forge MAX" : ("Upgrade Weapon — " + forgeCost() + "g");
+    sx=p.x; sy=p.y;
+  } else {
+    for(const t of towerSpots){
+      if(dist(mouse.x,mouse.y,t.x,t.y) <= t.radius+8){
+        const p = toScreen(t.x, t.y - t.radius - 22);
+        label = !t.built ? ("Build Tower — " + towerBuildCost() + "g")
+              : (t.level>=t.maxLevel ? "Tower MAX" : ("Upgrade Tower — " + towerUpgradeCost(t) + "g"));
+        sx=p.x; sy=p.y;
+        break;
+      }
+    }
+  }
+
+  if(label){
+    bubble.textContent = label;
+    bubble.style.left = sx + "px";
+    bubble.style.top = sy + "px";
+    bubble.classList.remove("hidden");
+  } else {
+    bubble.classList.add("hidden");
+  }
+}
+
+function roundedRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+//////////////////////// HUD ////////////////////////
+let lastGoldForPulse = gold;
+let goldPulseTimer = 0;
+function pulseGoldHud(){
+  goldPulseTimer = 0.001; // trigger on next updateHud tick
+}
+
+function updateHud(){
+  const pct = clamp(core.displayHp/core.maxHp,0,1);
+  document.getElementById("coreHpBarFill").style.width = (pct*100)+"%";
+  document.getElementById("coreHpBarFill").style.background = pct>0.3 ? "var(--hp)" : "var(--hp-low)";
+  document.getElementById("coreHpText").textContent = Math.max(0,Math.round(core.hp)) + " / " + core.maxHp;
+
+  const goldEl = document.getElementById("goldText");
+  goldEl.textContent = Math.round(goldDisplay);
+  if(goldPulseTimer > 0){
+    goldEl.classList.add("pulse");
+    goldPulseTimer = 0;
+    setTimeout(() => goldEl.classList.remove("pulse"), 150);
+  }
+
+  const remaining = Math.max(0, GAME_LENGTH - elapsed);
+  const m = Math.floor(remaining/60), s = Math.floor(remaining%60);
+  document.getElementById("timerText").textContent = m + ":" + String(s).padStart(2,"0");
+
+  document.getElementById("wpnDmg").textContent = player.damage;
+  document.getElementById("wpnRate").textContent = player.fireRate.toFixed(1);
+  document.getElementById("wpnLvl").textContent = player.weaponLevel = forge.level;
+}
+
+//////////////////////// GAME LOOP ////////////////////////
+function loop(ts){
+  if(!lastTime) lastTime = ts;
+  const dt = Math.min(0.05, (ts - lastTime)/1000);
+  lastTime = ts;
+
+  // hit-stop: for its duration, run the simulation at a tiny fraction of
+  // real time instead of freezing it outright — reads as a "punch" beat
+  // rather than a stutter, and the timer still counts down in real time.
+  let simDt = dt;
+  if(hitStopTimer > 0){
+    hitStopTimer = Math.max(0, hitStopTimer - dt);
+    simDt = dt * 0.06;
+  }
+
+  if(state === "playing"){
+    update(simDt);
+  }
+  draw();
+  updateHud();
+
+  requestAnimationFrame(loop);
+}
+
+//////////////////////// GAME FLOW ////////////////////////
+function resetGame(){
+  elapsed = 0;
+  gold = 40;
+  goldDisplay = 40;
+  enemies = [];
+  bullets = [];
+  goldPickups = [];
+  particles = [];
+  floatTexts.length = 0;
+  spawnTimer = 2.0;
+  shakeTimer = 0;
+  hitStopTimer = 0;
+
+  player.x = CENTER.x; player.y = CENTER.y + 90;
+  player.weaponLevel = 1; player.damage = 10; player.fireRate = 3.0; player.fireCooldown = 0;
+
+  core.hp = core.maxHp;
+  core.displayHp = core.maxHp;
+  forge.level = 1;
+
+  for(const t of towerSpots){
+    t.built = false; t.level = 0; t.cooldown = 0;
+    t.damage = 8; t.range = 170; t.fireRate = 1.2;
+  }
+}
+
+function startGame(){
+  resetGame();
+  state = "playing";
+  document.getElementById("startOverlay").classList.add("hidden");
+  document.getElementById("endOverlay").classList.add("hidden");
+}
+
+function endGame(won){
+  state = won ? "won" : "lost";
+  const endOverlay = document.getElementById("endOverlay");
+  const title = document.getElementById("endTitle");
+  const text = document.getElementById("endText");
+  if(won){
+    title.textContent = "The Village Survives!";
+    title.id = "winTitle"; title.className = "";
+    title.style.color = "var(--gold)";
+    text.textContent = "You held the line for a full 10 minutes. The town core stands strong.";
+  } else {
+    title.textContent = "The Village Has Fallen";
+    title.style.color = "var(--hp-low)";
+    text.textContent = "The town core was destroyed at " + Math.floor(elapsed) + " seconds. Rebuild and try again.";
+  }
+  endOverlay.classList.remove("hidden");
+}
+
+document.getElementById("startBtn").addEventListener("click", startGame);
+document.getElementById("restartBtn").addEventListener("click", startGame);
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,597 @@
+<title>The OTM Query Shelf</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#f4f5f8;
+    --surface:#ffffff;
+    --surface-alt:#eceef3;
+    --ink:#1b2430;
+    --ink-soft:#525b6b;
+    --ink-faint:#818a99;
+    --border:#dadfe7;
+    --accent:#0e7c86;
+    --accent-ink:#075a62;
+    --accent-soft:#e2f1f1;
+    --warn:#b85c28;
+    --warn-soft:#f7e6da;
+    --code-bg:#141a22;
+    --code-ink:#dbe4ee;
+    --code-accent:#7fd6cf;
+    --code-string:#e3b479;
+    --code-comment:#7a8699;
+    --shadow: 0 1px 2px rgba(20,26,34,.04), 0 8px 24px -12px rgba(20,26,34,.12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10141a;
+      --surface:#171d26;
+      --surface-alt:#1e2632;
+      --ink:#e8ecf2;
+      --ink-soft:#a7b1c0;
+      --ink-faint:#727c8c;
+      --border:#2b3442;
+      --accent:#57c7c9;
+      --accent-ink:#8fe0e1;
+      --accent-soft:#1a3538;
+      --warn:#e0975f;
+      --warn-soft:#3a2a1e;
+      --code-bg:#0b0f14;
+      --code-ink:#dbe4ee;
+      --code-accent:#7fd6cf;
+      --code-string:#e3b479;
+      --code-comment:#5f6b7d;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10141a;
+    --surface:#171d26;
+    --surface-alt:#1e2632;
+    --ink:#e8ecf2;
+    --ink-soft:#a7b1c0;
+    --ink-faint:#727c8c;
+    --border:#2b3442;
+    --accent:#57c7c9;
+    --accent-ink:#8fe0e1;
+    --accent-soft:#1a3538;
+    --warn:#e0975f;
+    --warn-soft:#3a2a1e;
+    --code-bg:#0b0f14;
+    --code-ink:#dbe4ee;
+    --code-accent:#7fd6cf;
+    --code-string:#e3b479;
+    --code-comment:#5f6b7d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  code, pre, .mono{ font-family:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+
+  a{ color:var(--accent-ink); text-decoration-color: color-mix(in srgb, var(--accent-ink) 40%, transparent); }
+
+  .shell{
+    display:grid;
+    grid-template-columns: 232px minmax(0,1fr);
+    gap:0;
+    max-width:1180px;
+    margin:0 auto;
+  }
+
+  /* ---- nav ---- */
+  nav{
+    position:sticky;
+    top:0;
+    align-self:start;
+    height:100vh;
+    overflow-y:auto;
+    padding:2.75rem 1.25rem 2rem 1.75rem;
+    border-right:1px solid var(--border);
+  }
+  .brand{
+    font-weight:700;
+    font-size:0.95rem;
+    letter-spacing:.02em;
+    margin-bottom:.15rem;
+  }
+  .brand span{ color: var(--accent-ink); }
+  .brand-sub{
+    font-size:.72rem;
+    color:var(--ink-faint);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    margin-bottom:2rem;
+  }
+  nav ol{
+    list-style:none;
+    margin:0; padding:0;
+    counter-reset: nav-count;
+  }
+  nav li{ counter-increment: nav-count; margin-bottom:.15rem; }
+  nav a{
+    display:flex;
+    gap:.6rem;
+    padding:.4rem .5rem;
+    border-radius:7px;
+    font-size:.86rem;
+    color:var(--ink-soft);
+    text-decoration:none;
+    transition: background .12s ease, color .12s ease;
+  }
+  nav a:hover{ background:var(--surface-alt); color:var(--ink); }
+  nav a::before{
+    content: counter(nav-count, decimal-leading-zero);
+    font-family:"IBM Plex Mono", monospace;
+    font-size:.72rem;
+    color:var(--ink-faint);
+    padding-top:.1rem;
+  }
+
+  /* ---- main ---- */
+  main{ padding: 2.75rem 3rem 6rem; min-width:0; }
+  .kicker{
+    font-size:.76rem;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    color:var(--accent-ink);
+    margin:0 0 .9rem;
+  }
+  h1{
+    font-size: clamp(1.9rem, 2.6vw, 2.5rem);
+    line-height:1.15;
+    margin:0 0 .9rem;
+    text-wrap:balance;
+    letter-spacing:-0.01em;
+  }
+  .lede{
+    font-size:1.05rem;
+    color:var(--ink-soft);
+    max-width:62ch;
+    margin:0 0 2.6rem;
+  }
+  .lede strong{ color:var(--ink); font-weight:600; }
+
+  section{ margin-bottom:3.4rem; scroll-margin-top:1.5rem; }
+  section h2{
+    font-size:1.32rem;
+    margin: 0 0 .3rem;
+    letter-spacing:-0.005em;
+  }
+  .section-num{
+    font-family:"IBM Plex Mono", monospace;
+    color: var(--ink-faint);
+    font-size:.85rem;
+    font-weight:500;
+    margin-right:.55rem;
+  }
+  .section-intro{
+    color:var(--ink-soft);
+    max-width:66ch;
+    margin: .5rem 0 1.4rem;
+  }
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow: var(--shadow);
+  }
+
+  /* folder tree */
+  .tree{
+    padding: 1.4rem 1.6rem;
+    font-size:.87rem;
+    overflow-x:auto;
+  }
+  .tree .line{ white-space:pre; color:var(--ink-soft); }
+  .tree .dir{ color:var(--ink); font-weight:600; }
+  .tree .note{ color:var(--ink-faint); font-style:italic; }
+
+  /* module chips */
+  .chipgrid{
+    display:flex; flex-wrap:wrap; gap:.5rem;
+    margin: 1.1rem 0 0;
+  }
+  .chip{
+    display:inline-flex; align-items:center; gap:.4rem;
+    padding:.32rem .7rem;
+    border-radius:999px;
+    font-size:.8rem;
+    font-weight:500;
+    background: hsl(var(--hue) 60% 93%);
+    color: hsl(var(--hue) 60% 26%);
+    border:1px solid hsl(var(--hue) 55% 84%);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .chip{
+      background: hsl(var(--hue) 38% 20%);
+      color: hsl(var(--hue) 70% 84%);
+      border-color: hsl(var(--hue) 35% 30%);
+    }
+  }
+  :root[data-theme="dark"] .chip{
+    background: hsl(var(--hue) 38% 20%);
+    color: hsl(var(--hue) 70% 84%);
+    border-color: hsl(var(--hue) 35% 30%);
+  }
+  .chip .dot{ width:.45rem; height:.45rem; border-radius:50%; background: hsl(var(--hue) 65% 45%); }
+
+  /* naming convention anatomy */
+  .anatomy{
+    padding: 1.6rem;
+  }
+  .anatomy-string{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:1.05rem;
+    display:flex; flex-wrap:wrap;
+    margin-bottom:1.2rem;
+  }
+  .anatomy-string b{
+    font-weight:600;
+    padding:.15rem .1rem;
+    border-bottom:2px solid hsl(var(--hue,190) 55% 50%);
+  }
+  .anatomy-legend{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+    gap: .9rem 1.4rem;
+    padding-top:1.1rem;
+    border-top:1px dashed var(--border);
+  }
+  .anatomy-legend dt{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:.82rem;
+    font-weight:600;
+    color: hsl(var(--hue,190) 55% 40%);
+    margin-bottom:.15rem;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .anatomy-legend dt{ color: hsl(var(--hue,190) 60% 68%); }
+  }
+  :root[data-theme="dark"] .anatomy-legend dt{ color: hsl(var(--hue,190) 60% 68%); }
+  .anatomy-legend dd{
+    margin:0; font-size:.86rem; color:var(--ink-soft);
+  }
+
+  /* tag table */
+  table{ width:100%; border-collapse:collapse; font-size:.88rem; }
+  thead th{
+    text-align:left;
+    font-size:.72rem;
+    text-transform:uppercase;
+    letter-spacing:.07em;
+    color:var(--ink-faint);
+    font-weight:600;
+    padding: .9rem 1rem;
+    border-bottom:1px solid var(--border);
+  }
+  tbody td{
+    padding:.85rem 1rem;
+    border-bottom:1px solid var(--border);
+    color:var(--ink-soft);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody td:first-child{ color:var(--ink); }
+  .tag-code{
+    font-family:"IBM Plex Mono", monospace;
+    font-weight:600;
+    font-size:.82rem;
+    color:var(--accent-ink);
+    white-space:nowrap;
+  }
+  .table-wrap{ overflow-x:auto; }
+
+  /* code block */
+  .codeblock{
+    position:relative;
+    background:var(--code-bg);
+    color:var(--code-ink);
+    border-radius:14px;
+    box-shadow: var(--shadow);
+    overflow:hidden;
+  }
+  .codeblock .bar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:.6rem 1rem;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    font-family:"IBM Plex Mono", monospace;
+    font-size:.72rem;
+    color: var(--code-comment);
+    letter-spacing:.04em;
+    text-transform:uppercase;
+  }
+  .codeblock pre{
+    margin:0;
+    padding:1.2rem 1.4rem 1.5rem;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:.83rem;
+    line-height:1.65;
+    overflow-x:auto;
+    white-space:pre;
+  }
+  .codeblock .c{ color:var(--code-comment); }
+  .codeblock .k{ color:var(--code-accent); }
+  .codeblock .s{ color:var(--code-string); }
+  .copy-btn{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:.68rem;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    background:transparent;
+    border:1px solid rgba(255,255,255,.18);
+    color: var(--code-comment);
+    border-radius:6px;
+    padding:.28rem .6rem;
+    cursor:pointer;
+    transition: color .12s ease, border-color .12s ease;
+  }
+  .copy-btn:hover{ color:var(--code-ink); border-color: rgba(255,255,255,.4); }
+  .copy-btn:focus-visible, a:focus-visible, nav a:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* two-col principle grid */
+  .principle-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px,1fr));
+    gap: 1rem;
+  }
+  .principle{
+    padding: 1.15rem 1.3rem;
+  }
+  .principle .num{
+    font-family:"IBM Plex Mono", monospace;
+    color:var(--accent-ink);
+    font-size:.8rem;
+    font-weight:600;
+  }
+  .principle h3{ font-size:1rem; margin:.4rem 0 .35rem; }
+  .principle p{ margin:0; font-size:.87rem; color:var(--ink-soft); }
+
+  .callout{
+    display:flex; gap:.9rem;
+    padding: 1.1rem 1.3rem;
+    border-radius:12px;
+    background: var(--warn-soft);
+    border:1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  }
+  .callout .mark{
+    font-family:"IBM Plex Mono", monospace;
+    font-weight:700;
+    color: var(--warn);
+  }
+  .callout p{ margin:0; font-size:.88rem; color:var(--ink-soft); }
+  .callout strong{ color:var(--ink); }
+
+  footer{
+    padding: 2rem 3rem 3.5rem;
+    color:var(--ink-faint);
+    font-size:.8rem;
+    border-top:1px solid var(--border);
+  }
+
+  @media (max-width: 860px){
+    .shell{ grid-template-columns: 1fr; }
+    nav{ position:relative; height:auto; border-right:none; border-bottom:1px solid var(--border); padding:1.5rem; }
+    main{ padding: 2rem 1.25rem 4rem; }
+  }
+</style>
+
+<div class="shell">
+  <nav aria-label="Section navigation">
+    <div class="brand">The OTM Query <span>Shelf</span></div>
+    <div class="brand-sub">A findability framework</div>
+    <ol>
+      <li><a href="#principle">The organizing idea</a></li>
+      <li><a href="#structure">Folder structure</a></li>
+      <li><a href="#naming">File naming</a></li>
+      <li><a href="#tags">Task-type tags</a></li>
+      <li><a href="#header">File header template</a></li>
+      <li><a href="#index">The master index</a></li>
+      <li><a href="#search">Finding a query fast</a></li>
+      <li><a href="#upkeep">Keeping it alive</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <p class="kicker">Oracle Transportation Management &middot; SQL library</p>
+    <h1>One shelf, three ways to find what's on it.</h1>
+    <p class="lede">Folders alone can't answer "which query do I reach for" — a query lives in a module <strong>and</strong> gets used for a purpose <strong>and</strong> gets reached for at some frequency. This framework picks <strong>OTM module</strong> as the folder you open, <strong>task type</strong> as a tag you scan for, and a <strong>one-page index</strong> as the net that catches everything the folders can't sort on their own.</p>
+
+    <section id="principle">
+      <h2><span class="section-num">01</span>The organizing idea</h2>
+      <p class="section-intro">Three layers, each doing one job. None of them works alone — together they cover "where do I look" and "how do I know this is the right one" at the same time.</p>
+      <div class="principle-grid">
+        <div class="card principle">
+          <div class="num">Layer 1</div>
+          <h3>Folder = module</h3>
+          <p>The physical location. You already think "I need a rate query" before you think anything else, so the top-level folder matches that instinct.</p>
+        </div>
+        <div class="card principle">
+          <div class="num">Layer 2</div>
+          <h3>Filename = task type</h3>
+          <p>A tag baked into the name itself. Inside Rate, a DEBUG query and a REPORT query look nothing alike at a glance — the name should say which before you open it.</p>
+        </div>
+        <div class="card principle">
+          <div class="num">Layer 3</div>
+          <h3>Index = everything else</h3>
+          <p>Frequency, environment, last-verified date, the ticket it was written for. Things that don't deserve their own folder but absolutely deserve to be searchable.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="structure">
+      <h2><span class="section-num">02</span>Folder structure</h2>
+      <p class="section-intro">One folder per OTM domain, plus three utility folders that almost every query library ends up needing.</p>
+      <div class="card tree">
+<div class="line"><span class="dir">otm-sql/</span></div>
+<div class="line">├── <span class="dir">order/</span></div>
+<div class="line">├── <span class="dir">shipment/</span></div>
+<div class="line">├── <span class="dir">tender/</span></div>
+<div class="line">├── <span class="dir">rate/</span></div>
+<div class="line">├── <span class="dir">fleet/</span></div>
+<div class="line">├── <span class="dir">invoice-billing/</span></div>
+<div class="line">├── <span class="dir">party-location/</span></div>
+<div class="line">├── <span class="dir">integration/</span>        <span class="note">interfaces, EDI, XML/CSV in-out, gateway logs</span></div>
+<div class="line">├── <span class="dir">admin-config/</span>       <span class="note">domain setup, user/role, workflow, agents</span></div>
+<div class="line">├── <span class="dir">_utility/</span>           <span class="note">reusable snippets, lookups, date helpers</span></div>
+<div class="line">├── <span class="dir">_archive/</span>           <span class="note">superseded or environment-retired queries</span></div>
+<div class="line">└── <span class="dir">INDEX.md</span>              <span class="note">the master catalog — see section 06</span></div>
+      </div>
+      <div class="chipgrid">
+        <span class="chip" style="--hue:200"><span class="dot"></span>Order</span>
+        <span class="chip" style="--hue:255"><span class="dot"></span>Shipment</span>
+        <span class="chip" style="--hue:280"><span class="dot"></span>Tender</span>
+        <span class="chip" style="--hue:35"><span class="dot"></span>Rate</span>
+        <span class="chip" style="--hue:150"><span class="dot"></span>Fleet</span>
+        <span class="chip" style="--hue:15"><span class="dot"></span>Invoice / Billing</span>
+        <span class="chip" style="--hue:190"><span class="dot"></span>Party / Location</span>
+        <span class="chip" style="--hue:320"><span class="dot"></span>Integration</span>
+        <span class="chip" style="--hue:90"><span class="dot"></span>Admin / Config</span>
+      </div>
+      <p class="section-intro" style="margin-top:1rem;">A query that genuinely spans modules (e.g. an order-to-invoice reconciliation) lives in whichever module it's <em>run against most often</em> — then gets both modules recorded as tags in the index, so it still surfaces under either.</p>
+    </section>
+
+    <section id="naming">
+      <h2><span class="section-num">03</span>File naming</h2>
+      <p class="section-intro">The filename should tell you what it is before you open it. One fixed shape, four parts:</p>
+      <div class="card anatomy">
+        <div class="anatomy-string">
+<b style="--hue:200">rate</b>&#8203;_<b style="--hue:35">FIX</b>&#8203;_<b style="--hue:150">missing-fuel-surcharge-on-lane</b>&#8203;_<b style="--hue:280">20260814</b>.sql
+        </div>
+        <dl class="anatomy-legend">
+          <div><dt style="--hue:200">module</dt><dd>matches the folder it sits in — makes the file self-identifying if it's ever copied or shared out of context.</dd></div>
+          <div><dt style="--hue:35">task type</dt><dd>one of the fixed tags from section 04, always uppercase so it's easy to scan a directory listing.</dd></div>
+          <div><dt style="--hue:150">description</dt><dd>lowercase, hyphenated, verb-first when possible — "find-", "reset-", "count-" reads faster than a noun phrase.</dd></div>
+          <div><dt style="--hue:280">date stamp</dt><dd>YYYYMMDD of last meaningful edit, not creation — lets you sort a folder newest-first and see what's still fresh.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section id="tags">
+      <h2><span class="section-num">04</span>Task-type tags</h2>
+      <p class="section-intro">Keep this list short and fixed — the value of a tag comes from never inventing a new one on the fly.</p>
+      <div class="card table-wrap">
+        <table>
+          <thead><tr><th>Tag</th><th>Use it for</th><th>Typical run frequency</th></tr></thead>
+          <tbody>
+            <tr><td class="tag-code">MONITOR</td><td>Health checks you'd run on a schedule — stuck orders, failed tenders, queue backlogs.</td><td>Daily / on-call</td></tr>
+            <tr><td class="tag-code">DEBUG</td><td>Diagnostic digging for a specific incident — tracing one order or shipment through its lifecycle.</td><td>As-needed</td></tr>
+            <tr><td class="tag-code">REPORT</td><td>Scheduled or recurring extracts for a stakeholder — volumes, SLA, spend.</td><td>Weekly / monthly</td></tr>
+            <tr><td class="tag-code">ADHOC</td><td>One-off analysis for a question that came up once. Candidate for <span class="tag-code">_archive</span> after use.</td><td>Once</td></tr>
+            <tr><td class="tag-code">FIX</td><td>Data-correction scripts — read carefully before rerunning; note the environment in the header.</td><td>Rare, high-caution</td></tr>
+            <tr><td class="tag-code">INTEG</td><td>Verifying data made it across an interface — EDI, XML, integration gateway.</td><td>Per incident / cutover</td></tr>
+            <tr><td class="tag-code">SETUP</td><td>Config and reference-data checks — domain values, user setup, workflow rules.</td><td>During implementation</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="header">
+      <h2><span class="section-num">05</span>File header template</h2>
+      <p class="section-intro">Paste this as a comment block at the top of every query. It's what makes the file self-explaining even outside its folder, and it's the text a search tool actually matches against — see section 07.</p>
+      <div class="codeblock">
+        <div class="bar"><span>header-template.sql</span><button class="copy-btn" data-copy-target="hdr">Copy</button></div>
+        <pre id="hdr"><span class="c">/* ------------------------------------------------------------
+   PURPOSE   : </span><span class="k">One line — what question this answers</span><span class="c">
+   MODULE    : </span><span class="k">RATE</span><span class="c">
+   TASK TYPE : </span><span class="k">FIX</span><span class="c">
+   TABLES    : </span><span class="k">RATE_RECORD, RATE_OFFERING</span><span class="c">
+   ENV       : </span><span class="k">PROD | TEST</span><span class="c">
+   FREQUENCY : </span><span class="k">RARE</span><span class="c">
+   OWNER     : </span><span class="k">your name</span><span class="c">
+   VERIFIED  : </span><span class="k">2026-08-14</span><span class="c">
+   TICKET    : </span><span class="k">OTM-4821 (optional)</span><span class="c">
+   NOTES     : </span><span class="k">anything the next reader needs to know</span><span class="c">
+------------------------------------------------------------ */</span></pre>
+      </div>
+    </section>
+
+    <section id="index">
+      <h2><span class="section-num">06</span>The master index</h2>
+      <p class="section-intro">One markdown or spreadsheet file at the root of the library — <code class="mono">INDEX.md</code> — that lists every query with the fields that folders and filenames can't express. This is what you actually search when the question is "usage," not "location."</p>
+      <div class="card table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Module</th><th>Task</th><th>Used for</th><th>Frequency</th><th>Last verified</th></tr></thead>
+          <tbody>
+            <tr><td class="mono" style="font-size:.8rem;">rate_FIX_missing-fuel-surcharge…</td><td>Rate</td><td class="tag-code">FIX</td><td>Backfills surcharge on lanes missing a rate component</td><td>Rare</td><td>2026-08-14</td></tr>
+            <tr><td class="mono" style="font-size:.8rem;">shipment_MONITOR_unplanned-24h…</td><td>Shipment</td><td class="tag-code">MONITOR</td><td>Flags shipments unplanned after 24h of order release</td><td>Daily</td><td>2026-08-30</td></tr>
+            <tr><td class="mono" style="font-size:.8rem;">tender_REPORT_carrier-accept-rate…</td><td>Tender</td><td class="tag-code">REPORT</td><td>Monthly carrier acceptance-rate rollup for ops review</td><td>Monthly</td><td>2026-08-01</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-intro" style="margin-top:1rem;">Update this file whenever you add, retire, or re-verify a query. It's the only place multi-module and cross-cutting queries need to be listed twice — the file itself only lives in one folder.</p>
+    </section>
+
+    <section id="search">
+      <h2><span class="section-num">07</span>Finding a query fast</h2>
+      <p class="section-intro">With headers in place, a plain-text search across the whole library beats browsing folders once the collection grows past a couple dozen files.</p>
+      <div class="codeblock">
+        <div class="bar"><span>terminal</span><button class="copy-btn" data-copy-target="search">Copy</button></div>
+        <pre id="search"><span class="c"># every query touching a given table</span>
+grep -ril <span class="s">"RATE_OFFERING"</span> otm-sql/
+
+<span class="c"># every MONITOR query, regardless of module</span>
+grep -ril <span class="s">"TASK TYPE *: *MONITOR"</span> otm-sql/
+
+<span class="c"># anything not re-verified in the last 6 months (needs `fd`/`find` + header date)</span>
+grep -rl <span class="s">"VERIFIED"</span> otm-sql/ | xargs grep -L <span class="s">"2026-0[3-9]\|2026-1"</span></pre>
+      </div>
+      <p class="section-intro" style="margin-top:1rem;">If the library is shared with a team, the same header fields drop straight into a spreadsheet with almost no reformatting — useful the day someone asks "do we already have a query for this?" before writing a new one.</p>
+    </section>
+
+    <section id="upkeep">
+      <h2><span class="section-num">08</span>Keeping it alive</h2>
+      <div class="callout">
+        <span class="mark">!</span>
+        <p><strong>A structure only stays useful if new files are born into it.</strong> The moment a query gets saved as "test2_final.sql" on the desktop, the whole system starts leaking. Make the header template a saved snippet in whatever editor you write SQL in, so filling it in costs nothing.</p>
+      </div>
+      <div class="principle-grid" style="margin-top:1rem;">
+        <div class="card principle">
+          <div class="num">Retire, don't delete</div>
+          <h3>Move to _archive/</h3>
+          <p>Superseded queries move to <code class="mono">_archive/</code> with their original name intact — cheaper than deleting, and searchable if a report ever needs to be reproduced.</p>
+        </div>
+        <div class="card principle">
+          <div class="num">Review quarterly</div>
+          <h3>Re-verify FIX and MONITOR</h3>
+          <p>Table and column changes in an OTM upgrade break exactly these two tag types most often. A short quarterly pass through the index catches drift early.</p>
+        </div>
+        <div class="card principle">
+          <div class="num">One library, not per-project</div>
+          <h3>Resist forking by client</h3>
+          <p>If the same library serves multiple environments or clients, add an <code class="mono">ENV</code> or client column to the index rather than duplicating the whole folder tree.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  document.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = document.getElementById(btn.getAttribute('data-copy-target'));
+      if(!target) return;
+      var text = target.innerText;
+      var done = function(){
+        var old = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(function(){ btn.textContent = old; }, 1400);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        done();
+      }
+    });
+  });
+</script>
