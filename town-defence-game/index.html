@@ -98,8 +98,6 @@
     background:var(--accent); border:none; border-radius:8px; color:#04101f; cursor:pointer;
   }
   button.primary:hover{ filter:brightness(1.1); }
-  #loseTitle{ color:var(--hp-low); }
-  #winTitle{ color:var(--gold); }
   .hidden{ display:none !important; }
 
   .floatText{
@@ -137,7 +135,7 @@
   </div>
 
   <div id="tip">
-    <b>WASD</b> move &middot; <b>Mouse</b> aim &middot; <b>Left-Click</b> shoot / hold to build &amp; upgrade &middot; walk near gold to collect it
+    <b>WASD</b> move &middot; <b>Mouse</b> aim &middot; <b>Left-Click</b> shoot (hold to keep firing) &middot; click glowing town objects to build &amp; upgrade &middot; <b>M</b> mute
   </div>
 
   <div id="promptBubble" class="hidden"></div>
@@ -324,6 +322,104 @@ const Camera = {
   }
 };
 
+//////////////////////// SOUND ////////////////////////
+// Synthesized sound effects via Web Audio — no asset files, so the game stays
+// a single double-clickable HTML file. Browsers only allow audio after a user
+// gesture, so init() is called from the Start/Play Again buttons. Every
+// method is a safe no-op if audio is unavailable or muted.
+const Sound = {
+  ac: null, master: null, muted: false, lastPlayed: {},
+
+  // minimum gap (ms) between plays of the same effect, so rapid-fire events
+  // (tower volleys, core being chewed on) stay readable instead of harsh
+  throttleMs: { shoot: 45, towerShot: 60, hit: 35, kill: 40, coin: 35, coreHit: 90, deny: 120 },
+
+  init(){
+    try{
+      this.muted = localStorage.getItem("tlv-muted") === "1";
+    }catch(e){ /* storage unavailable: default to unmuted */ }
+    if(this.ac) { this.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    try{
+      this.ac = new AC();
+      this.master = this.ac.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.6;
+      this.master.connect(this.ac.destination);
+    }catch(e){ this.ac = null; }
+  },
+  resume(){
+    if(this.ac && this.ac.state === "suspended") this.ac.resume();
+  },
+  toggleMute(){
+    this.muted = !this.muted;
+    if(this.master) this.master.gain.value = this.muted ? 0 : 0.6;
+    try{ localStorage.setItem("tlv-muted", this.muted ? "1" : "0"); }catch(e){}
+    return this.muted;
+  },
+
+  // one oscillator note with an exponential fade-out; freq glides to freqEnd
+  tone(freq, freqEnd, dur, type, vol, delay = 0){
+    const t0 = this.ac.currentTime + delay;
+    const osc = this.ac.createOscillator();
+    const g = this.ac.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if(freqEnd !== freq) osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqEnd), t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(this.master);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  },
+  // filtered white-noise burst (impacts, crunch)
+  noise(dur, vol, filterType, filterFreq, delay = 0){
+    const t0 = this.ac.currentTime + delay;
+    const len = Math.max(1, Math.floor(this.ac.sampleRate * dur));
+    const buf = this.ac.createBuffer(1, len, this.ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for(let i=0;i<len;i++) data[i] = Math.random()*2 - 1;
+    const src = this.ac.createBufferSource();
+    const filter = this.ac.createBiquadFilter();
+    const g = this.ac.createGain();
+    src.buffer = buf;
+    filter.type = filterType; filter.frequency.value = filterFreq;
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(filter); filter.connect(g); g.connect(this.master);
+    src.start(t0);
+  },
+
+  play(name){
+    if(!this.ac || this.muted) return;
+    const now = performance.now();
+    const gap = this.throttleMs[name] || 0;
+    if(now - (this.lastPlayed[name] || 0) < gap) return;
+    this.lastPlayed[name] = now;
+
+    switch(name){
+      case "shoot":     this.tone(520, 170, 0.07, "square", 0.04); break;
+      case "towerShot": this.tone(760, 420, 0.06, "sine", 0.035); break;
+      case "hit":       this.noise(0.04, 0.05, "bandpass", 1600); break;
+      case "kill":      this.tone(320, 90, 0.12, "triangle", 0.08);
+                        this.noise(0.08, 0.04, "highpass", 1200); break;
+      case "tankKill":  this.tone(190, 45, 0.28, "sawtooth", 0.09);
+                        this.noise(0.22, 0.09, "lowpass", 700); break;
+      case "coin":      this.tone(880, 880, 0.05, "sine", 0.05);
+                        this.tone(1320, 1320, 0.08, "sine", 0.05, 0.05); break;
+      case "build":     this.tone(130, 60, 0.18, "square", 0.07);
+                        this.tone(520, 520, 0.1, "triangle", 0.05, 0.08); break;
+      case "upgrade":   [440, 554, 659, 880].forEach((f, i) => this.tone(f, f, 0.1, "triangle", 0.06, i*0.06)); break;
+      case "repair":    this.tone(330, 330, 0.09, "sine", 0.06);
+                        this.tone(495, 495, 0.14, "sine", 0.06, 0.08); break;
+      case "coreHit":   this.noise(0.14, 0.12, "lowpass", 420);
+                        this.tone(95, 55, 0.16, "sawtooth", 0.07); break;
+      case "deny":      this.tone(170, 150, 0.1, "square", 0.04); break;
+      case "win":       [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, f, 0.22, "triangle", 0.07, i*0.11)); break;
+      case "lose":      [392, 330, 262, 196].forEach((f, i) => this.tone(f, f*0.97, 0.3, "sawtooth", 0.06, i*0.18)); break;
+    }
+  }
+};
+
 //////////////////////// GAME STATE ////////////////////////
 const CENTER = { x: W/2, y: H/2 };
 const GAME_LENGTH = 600; // 10 minutes in seconds
@@ -369,7 +465,7 @@ const core = {
 
 //////////////////////// FORGE ////////////////////////
 const forge = {
-  x: CENTER.x - 150, y: CENTER.y - 70,
+  x: CENTER.x - 150, y: CENTER.y + 70, // lower-left: clear of every tower spot's click area
   radius: 22,
   level: 1,
   maxLevel: 5,
@@ -404,6 +500,16 @@ const towerSpots = [];
 }
 function towerBuildCost(){ return 20; }
 function towerUpgradeCost(t){ return 25 + t.level*25; }
+
+// Cost of the next purchase available on each town object, or null when there
+// is nothing to buy (maxed out, or the core is undamaged). The upgrade cues
+// read these, so the labels can't drift from the real prices.
+function coreNextCost(){ return core.hp < core.maxHp ? core.repairCost : null; }
+function forgeNextCost(){ return forge.level < forge.maxLevel ? forgeCost() : null; }
+function towerNextCost(t){
+  if(!t.built) return towerBuildCost();
+  return t.level < t.maxLevel ? towerUpgradeCost(t) : null;
+}
 
 //////////////////////// ENEMIES ////////////////////////
 const ENEMY_TYPES = {
@@ -461,6 +567,7 @@ function fireBullet(fromX, fromY, angle, damage, speed, life, fromTower){
     vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
     damage, life, fromTower
   });
+  Sound.play(fromTower ? "towerShot" : "shoot");
   // muzzle flash: a couple of quick bright particles at the origin
   Particles.spawn(fromX, fromY, fromTower ? "#bcdcff" : "#fff2c4", 3, {
     speedMin: 20, speedMax: 70, life: 0.12, size: 2.5,
@@ -478,7 +585,9 @@ function dropGold(x,y,min,max){
 
 //////////////////////// INPUT ////////////////////////
 window.addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
+  const key = e.key.toLowerCase();
+  keys[key] = true;
+  if(key === "m" && !e.repeat) Sound.toggleMute();
 });
 window.addEventListener("keyup", e => {
   keys[e.key.toLowerCase()] = false;
@@ -517,6 +626,7 @@ canvas.addEventListener("contextmenu", e => e.preventDefault());
 function spendGold(cost, popupX, popupY, onSuccess){
   if(gold < cost){
     popText(popupX, popupY, "Need " + cost + "g", "#f85149");
+    Sound.play("deny");
     return false;
   }
   gold -= cost;
@@ -532,6 +642,7 @@ function tryInteract(){
   if(dist(mouse.x, mouse.y, core.x, core.y) <= core.radius + 6){
     if(core.hp >= core.maxHp){
       popText(core.x, core.y - core.radius, "Full HP", "#8b949e");
+      Sound.play("deny");
       return true;
     }
     spendGold(core.repairCost, core.x, core.y - core.radius, () => {
@@ -540,6 +651,7 @@ function tryInteract(){
       triggerBump(core);
       Particles.spawn(core.x, core.y, "#3fb950", 10, { life:0.5, size:3, speedMin:60, speedMax:150 });
       popText(core.x, core.y - core.radius, "+" + core.repairAmount + " HP", "#3fb950");
+      Sound.play("repair");
     });
     return true;
   }
@@ -548,6 +660,7 @@ function tryInteract(){
   if(dist(mouse.x, mouse.y, forge.x, forge.y) <= forge.radius + 6){
     if(forge.level >= forge.maxLevel){
       popText(forge.x, forge.y - forge.radius, "MAX", "#8b949e");
+      Sound.play("deny");
       return true;
     }
     spendGold(forgeCost(), forge.x, forge.y - forge.radius, () => {
@@ -561,6 +674,7 @@ function tryInteract(){
       // weapon upgrades get a satisfying punch, since this is the game's core reward moment
       Camera.shake(5, 0.2);
       Camera.hitStop(0.05);
+      Sound.play("upgrade");
     });
     return true;
   }
@@ -575,6 +689,7 @@ function tryInteract(){
           triggerBump(t);
           Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:60, speedMax:160 });
           popText(t.x, t.y - t.radius, "Tower Built", "#58a6ff");
+          Sound.play("build");
         });
       } else if(t.level < t.maxLevel){
         spendGold(towerUpgradeCost(t), t.x, t.y - t.radius, () => {
@@ -586,9 +701,11 @@ function tryInteract(){
           triggerBump(t);
           Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:70, speedMax:170 });
           popText(t.x, t.y - t.radius, "Tower Lv" + t.level, "#58a6ff");
+          Sound.play("upgrade");
         });
       } else {
         popText(t.x, t.y - t.radius, "MAX", "#8b949e");
+        Sound.play("deny");
       }
       return true;
     }
@@ -704,8 +821,13 @@ function updateBullets(dt){
             // the heavier kill gets a bigger shake and a brief punch of hit-stop
             Camera.shake(7, 0.28);
             Camera.hitStop(0.06);
+            Sound.play("tankKill");
+          } else {
+            Sound.play("kill");
           }
           enemies.splice(j,1);
+        } else {
+          Sound.play("hit");
         }
         break;
       }
@@ -733,6 +855,7 @@ function updateEnemies(dt){
         // small shake per hit; scales gently with the hit's damage but stays
         // subdued since several enemies can be attacking the core at once
         Camera.shake(2 + e.dmgToCore*0.35, 0.16);
+        Sound.play("coreHit");
       }
     }
   }
@@ -753,6 +876,7 @@ function updateGoldPickups(dt){
       gold += g.value;
       popText(player.x, player.y - 24, "+" + g.value, "#e3b341");
       pulseGoldHud();
+      Sound.play("coin");
       goldPickups.splice(i,1);
     }
   }
@@ -788,6 +912,7 @@ function draw(){
   drawTowerSpots();
   drawForge();
   drawCore();
+  drawUpgradeCues();
   drawGoldPickups();
   drawEnemies();
   drawBullets();
@@ -961,6 +1086,35 @@ function drawForge(){
   ctx.font = "11px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Forge Lv" + forge.level, forge.x, forge.y + forge.radius + 14);
+}
+
+// Teaches the core loop without text: anything the player can afford right
+// now gets a pulsing gold ring, and every purchasable object shows its price
+// (gold-coloured when affordable, grey when not).
+function drawUpgradeCues(){
+  const pulse = 0.5 + 0.5*Math.sin(elapsed*5);
+
+  function cue(x, y, radius, cost, tagY){
+    if(cost === null) return;
+    const affordable = gold >= cost;
+    if(affordable){
+      ctx.save();
+      ctx.strokeStyle = `rgba(227,179,65,${0.35 + 0.45*pulse})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, y, radius + 6 + pulse*3, 0, TAU); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = affordable ? "#e3b341" : "#8b949e";
+    ctx.fillText(cost + "g", x, tagY);
+    ctx.restore();
+  }
+
+  cue(core.x, core.y, core.radius*1.15, coreNextCost(), core.y + core.radius + 18);
+  cue(forge.x, forge.y, forge.radius, forgeNextCost(), forge.y + forge.radius + 27);
+  for(const t of towerSpots) cue(t.x, t.y, t.radius, towerNextCost(t), t.y + t.radius + 17);
 }
 
 function drawTowerSpots(){
@@ -1221,6 +1375,7 @@ function resetGame(){
 }
 
 function startGame(){
+  Sound.init(); // must happen inside a user gesture (the button click)
   resetGame();
   state = "playing";
   document.getElementById("startOverlay").classList.add("hidden");
@@ -1229,12 +1384,12 @@ function startGame(){
 
 function endGame(won){
   state = won ? "won" : "lost";
+  Sound.play(won ? "win" : "lose");
   const endOverlay = document.getElementById("endOverlay");
   const title = document.getElementById("endTitle");
   const text = document.getElementById("endText");
   if(won){
     title.textContent = "The Village Survives!";
-    title.id = "winTitle"; title.className = "";
     title.style.color = "var(--gold)";
     text.textContent = "You held the line for a full 10 minutes. The town core stands strong.";
   } else {
