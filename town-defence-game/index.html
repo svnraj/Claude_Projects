@@ -33,12 +33,44 @@
     display:flex; align-items:center; justify-content:center;
     background:radial-gradient(ellipse at center, #141a22 0%, #0a0d12 100%);
   }
+  /* #stage is sized by JS to exactly match the (letterboxed) canvas, so the
+     HUD and tip bar anchor to the playfield instead of the whole page. */
+  #stage{ position:relative; width:1000px; height:680px; }
   canvas{
     background:#1b2430;
     display:block;
+    width:100%; height:100%;
     cursor:crosshair;
     box-shadow:0 0 60px rgba(0,0,0,0.6);
-    max-width:100vw; max-height:100vh;
+    touch-action:none;
+  }
+  .sr-only{
+    position:absolute; width:1px; height:1px; overflow:hidden;
+    clip:rect(0 0 0 0); white-space:nowrap;
+  }
+  button:focus-visible{ outline:3px solid #fff; outline-offset:3px; }
+  body:not(.touch) .touchOnly{ display:none !important; }
+  body.touch .kbOnly{ display:none !important; }
+  #pauseBtn{
+    background:transparent; border:1px solid var(--border); border-radius:6px;
+    color:var(--text); font-size:12px; line-height:1; padding:5px 7px; cursor:pointer;
+  }
+  #pauseBtn:hover{ border-color:var(--accent); }
+  #muteState{ color:var(--muted); }
+  #muteState.off{ color:var(--hp-low); }
+  /* small playfields (phones, narrow windows): compact HUD */
+  #stage.compact #hud{ padding:6px 8px; font-size:11px; }
+  #stage.compact .hudBox{ padding:4px 8px; border-radius:6px; }
+  #stage.compact #coreHpWrap{ width:112px; }
+  #stage.compact #coreHpLabel{ font-size:10px; margin-bottom:2px; }
+  #stage.compact #coreHpBarBg{ height:8px; }
+  #stage.compact #timerBox #timerText{ font-size:15px; }
+  #stage.compact #timerBox .sub, #stage.compact #weaponBox{ display:none; }
+  #stage.compact #goldBox{ font-size:14px; gap:5px; }
+  #stage.compact #goldBox .icon{ font-size:14px; }
+  #stage.compact #tip{ display:none; }
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; animation:none !important; }
   }
   #hud{
     position:absolute; top:0; left:0; right:0;
@@ -83,9 +115,9 @@
   .overlay{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     background:rgba(5,7,10,0.86);
-    flex-direction:column; text-align:center; padding:20px;
+    flex-direction:column; text-align:center; padding:20px; box-sizing:border-box; overflow:auto;
   }
-  .overlay h1{ font-family: var(--font-display); font-size:46px; margin:0 0 8px 0; letter-spacing:1.5px; text-shadow:0 2px 12px rgba(0,0,0,0.5); }
+  .overlay h1{ font-family: var(--font-display); font-size:clamp(28px, 7vw, 46px); margin:0 0 8px 0; letter-spacing:1.5px; text-shadow:0 2px 12px rgba(0,0,0,0.5); }
   .overlay p{ color:var(--muted); max-width:520px; line-height:1.5; margin:6px 0; }
   .overlay .rules{ text-align:left; margin:16px 0; color:var(--text); font-size:14px; line-height:1.8; }
   .overlay .rules div{ display:flex; gap:10px; align-items:center; }
@@ -115,7 +147,10 @@
 </head>
 <body>
 <div id="gameWrap">
-  <canvas id="game" width="1000" height="680"></canvas>
+ <div id="stage">
+  <canvas id="game" width="1000" height="680" role="img"
+          aria-label="The Last Village playfield. Defend the town core in the centre from approaching enemies. Keyboard shortcuts: 1 to 6 build or upgrade towers, F upgrades the forge, R repairs or reinforces the core."></canvas>
+  <div id="sr" class="sr-only" aria-live="polite"></div>
 
   <div id="hud">
     <div class="hudBox" id="coreHpWrap">
@@ -125,36 +160,49 @@
 
     <div class="hudBox" id="timerBox">
       <div id="timerText">10:00</div>
-      <div class="sub">SURVIVE</div>
+      <div class="sub" id="waveText">SURVIVE</div>
     </div>
 
     <div class="hudBox" style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-      <div id="goldBox"><span class="icon">&#9679;</span><span id="goldText">0</span></div>
-      <div id="weaponBox">DMG <b id="wpnDmg">10</b> &middot; RATE <b id="wpnRate">3.0</b>/s &middot; Lv<b id="wpnLvl">1</b></div>
+      <div id="goldBox"><span class="icon">&#9679;</span><span id="goldText">0</span>
+        <button id="pauseBtn" aria-label="Pause game" title="Pause (P or Esc)">&#10073;&#10073;</button></div>
+      <div id="weaponBox">DMG <b id="wpnDmg">10</b> &middot; RATE <b id="wpnRate">3.0</b>/s &middot; Lv<b id="wpnLvl">1</b> &middot; <span id="muteState">SOUND ON</span></div>
     </div>
   </div>
 
   <div id="tip">
-    <b>WASD</b> move &middot; <b>Mouse</b> aim &middot; <b>Left-Click</b> shoot (hold to keep firing) &middot; click glowing town objects to build &amp; upgrade &middot; <b>M</b> mute
+    <span class="kbOnly"><b>WASD</b> move &middot; <b>Mouse</b> aim &middot; <b>Left-Click</b> shoot (hold to keep firing) &middot; click glowing town objects to build &amp; upgrade &middot; <b>1-6</b> towers &middot; <b>F</b> forge &middot; <b>R</b> core &middot; <b>P</b> pause &middot; <b>M</b> mute</span>
+    <span class="touchOnly">Drag to move &middot; your weapon auto-aims &middot; tap glowing town objects to build &amp; upgrade</span>
   </div>
+ </div>
 
   <div id="promptBubble" class="hidden"></div>
 
-  <div class="overlay" id="startOverlay">
-    <h1>The Last Village</h1>
-    <p>Enemies are marching on the town. Shoot them down, collect their gold, and spend it in the world to build up your defenses. No menus, no pauses &mdash; just survive <b>10 minutes</b>.</p>
+  <div class="overlay" id="startOverlay" role="dialog" aria-modal="true" aria-labelledby="startTitle">
+    <h1 id="startTitle">The Last Village</h1>
+    <p>Enemies are marching on the town. Shoot them down, collect their gold, and spend it in the world to build up your defenses. Survive <b>10 minutes</b> &mdash; the attacks grow fiercer, with big waves and brutes late on. Pause any time with <b>P</b>.</p>
     <div class="rules">
-      <div><span class="key">WASD</span> Move your character</div>
-      <div><span class="key">Mouse</span> Aim your weapon</div>
-      <div><span class="key">Click</span> Shoot enemies</div>
-      <div><span class="key">Click</span> Tower spot &rarr; build / upgrade a tower</div>
-      <div><span class="key">Click</span> Town Core &rarr; repair it when damaged</div>
-      <div><span class="key">Click</span> Forge &rarr; upgrade your weapon</div>
+      <div class="kbOnly"><span class="key">WASD</span> Move your character</div>
+      <div class="kbOnly"><span class="key">Mouse</span> Aim your weapon</div>
+      <div class="kbOnly"><span class="key">Click</span> Shoot enemies</div>
+      <div class="touchOnly"><span class="key">Drag</span> Move your character (virtual joystick)</div>
+      <div class="touchOnly"><span class="key">Auto</span> Your weapon aims and fires at the nearest enemy</div>
+      <div><span class="key">Click / Tap</span> Tower spot &rarr; build / upgrade a tower</div>
+      <div><span class="key">Click / Tap</span> Town Core &rarr; repair it, or reinforce it when healthy</div>
+      <div><span class="key">Click / Tap</span> Forge &rarr; upgrade your weapon</div>
+      <div class="kbOnly"><span class="key">1-6 F R</span> Keyboard shortcuts for towers, forge, core</div>
     </div>
+    <p class="touchOnly">Tip: landscape orientation works best.</p>
     <button class="primary" id="startBtn">Start Game</button>
   </div>
 
-  <div class="overlay hidden" id="endOverlay">
+  <div class="overlay hidden" id="pauseOverlay" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+    <h1 id="pauseTitle">Paused</h1>
+    <p>Press <b>P</b> or <b>Esc</b>, or use the button, to resume.</p>
+    <button class="primary" id="resumeBtn">Resume</button>
+  </div>
+
+  <div class="overlay hidden" id="endOverlay" role="dialog" aria-modal="true" aria-labelledby="endTitle">
     <h1 id="endTitle"></h1>
     <p id="endText"></p>
     <button class="primary" id="restartBtn">Play Again</button>
@@ -168,12 +216,22 @@
 //////////////////////// CANVAS / SETUP ////////////////////////
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-const W = canvas.width, H = canvas.height;
+const W = 1000, H = 680; // logical world size; the backing store may be larger (see fitCanvas)
+const stage = document.getElementById("stage");
+let renderScale = 1;
 
+// Fit the playfield to the window (scaling up as well as down), size the
+// stage wrapper to match so the HUD hugs the canvas, and render the backing
+// store at the device pixel ratio so it stays crisp on HiDPI screens.
 function fitCanvas(){
-  const scale = Math.min(window.innerWidth / W, window.innerHeight / H, 1);
-  canvas.style.width = (W*scale) + "px";
-  canvas.style.height = (H*scale) + "px";
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H, 2.5);
+  const cssW = Math.floor(W*scale), cssH = Math.floor(H*scale);
+  stage.style.width = cssW + "px";
+  stage.style.height = cssH + "px";
+  stage.classList.toggle("compact", cssW < 640);
+  renderScale = Math.min(2, Math.max(1, scale * (window.devicePixelRatio || 1)));
+  const bw = Math.round(W*renderScale), bh = Math.round(H*renderScale);
+  if(canvas.width !== bw || canvas.height !== bh){ canvas.width = bw; canvas.height = bh; }
 }
 window.addEventListener("resize", fitCanvas);
 fitCanvas();
@@ -274,6 +332,8 @@ function bumpScaleOf(obj){
   return 1 + (obj.bump || 0) * 0.18;
 }
 
+const reducedMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
 //////////////////////// STEP 6: SCREEN SHAKE + HIT-STOP ////////////////////////
 // Camera: the two "impact" effects triggered by gameplay events (core
 // damage, a tank enemy dying, weapon upgrades) — grouped into one object
@@ -281,12 +341,15 @@ function bumpScaleOf(obj){
 // and are always triggered together at those call sites.
 const Camera = {
   shakeTimer: 0, shakeDuration: 1, shakeMag: 0,
-  hitStopTimer: 0,
+  hitStopTimer: 0, lastHitStopAt: 0,
 
   // a timed, decaying random offset applied to the whole canvas for one draw pass
   shake(magnitude, duration){
-    // a stronger/longer request always wins over a weaker shake already playing
-    if(magnitude >= this.shakeMag || this.shakeTimer <= 0){
+    if(reducedMotion) return;
+    // a stronger request wins over a weaker one still playing (compare against
+    // the *current* decayed magnitude, not the stale starting one)
+    const t = this.shakeTimer > 0 ? this.shakeTimer / this.shakeDuration : 0;
+    if(magnitude >= this.shakeMag * t * t){
       this.shakeMag = magnitude;
       this.shakeDuration = duration;
       this.shakeTimer = duration;
@@ -305,6 +368,10 @@ const Camera = {
   // briefly slows simulation time (rather than pausing outright) so an
   // impactful moment gets a single-frame "punch" before continuing
   hitStop(duration){
+    if(reducedMotion) return;
+    // cooldown so frequent heavy kills late in the run can't keep the clock crawling
+    if(performance.now() - this.lastHitStopAt < 700) return;
+    this.lastHitStopAt = performance.now();
     this.hitStopTimer = Math.max(this.hitStopTimer, duration);
   },
   // Called once per real frame, before simulating: decays the hit-stop timer
@@ -429,9 +496,24 @@ let elapsed = 0;
 let gold = 40;
 let goldDisplay = 40; // smoothed value driving the HUD pulse
 let lastTime = 0;
+let paused = false;
+let lowHpAnnounced = false;
 
 const keys = {};
 const mouse = { x: W/2, y: H/2, down: false };
+// floating virtual joystick for touch (world coordinates); id is the owning pointer
+const joy = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+let touchMode = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+document.body.classList.toggle("touch", touchMode);
+function setTouchMode(on){
+  if(on === touchMode) return;
+  touchMode = on;
+  document.body.classList.toggle("touch", on);
+}
+
+// polite screen-reader announcements for the events that matter (not every frame)
+const srEl = document.getElementById("sr");
+function announce(msg){ srEl.textContent = msg; }
 
 const floatTexts = []; // damage/gold popups
 
@@ -459,27 +541,33 @@ const core = {
   displayHp: 100, // smoothed for drawing
   repairCost: 25,
   repairAmount: 30,
+  // gold sink: once healthy, the core can be reinforced for more max HP
+  upgrades: 0,
+  maxUpgrades: 4,
+  upgradeHp: 40,
   flash: 0,
   bump: 0
 };
+function coreUpgradeCost(){ return 60 + core.upgrades * 50; }
 
 //////////////////////// FORGE ////////////////////////
 const forge = {
   x: CENTER.x - 150, y: CENTER.y + 70, // lower-left: clear of every tower spot's click area
   radius: 22,
   level: 1,
-  maxLevel: 5,
+  maxLevel: 8,
   flash: 0,
   bump: 0
 };
 function forgeCost(){ return 30 + (forge.level-1) * 35; }
 
 //////////////////////// TOWER SPOTS ////////////////////////
-const TOWER_COUNT = 4;
+const TOWER_COUNT = 6;
 const towerSpots = [];
 {
   const towerRadius = 190;
-  const angles = [ -Math.PI/2 + 0.5, Math.PI/2 - 0.5, Math.PI + 0.6, -0.6 ];
+  // 4 original spots plus 2 more (top-left, bottom-left) as a late-game gold sink
+  const angles = [ -Math.PI/2 + 0.5, Math.PI/2 - 0.5, Math.PI + 0.6, -0.6, -Math.PI/2 - 0.5, Math.PI/2 + 0.5 ];
   for(let i=0;i<TOWER_COUNT;i++){
     const a = angles[i];
     towerSpots.push({
@@ -488,7 +576,7 @@ const towerSpots = [];
       radius: 20,
       built:false,
       level:0,
-      maxLevel:3,
+      maxLevel:5,
       damage: 8,
       range: 170,
       fireRate: 1.2,
@@ -504,7 +592,10 @@ function towerUpgradeCost(t){ return 25 + t.level*25; }
 // Cost of the next purchase available on each town object, or null when there
 // is nothing to buy (maxed out, or the core is undamaged). The upgrade cues
 // read these, so the labels can't drift from the real prices.
-function coreNextCost(){ return core.hp < core.maxHp ? core.repairCost : null; }
+function coreNextCost(){
+  if(core.hp < core.maxHp) return core.repairCost;
+  return core.upgrades < core.maxUpgrades ? coreUpgradeCost() : null;
+}
 function forgeNextCost(){ return forge.level < forge.maxLevel ? forgeCost() : null; }
 function towerNextCost(t){
   if(!t.built) return towerBuildCost();
@@ -514,38 +605,55 @@ function towerNextCost(t){
 //////////////////////// ENEMIES ////////////////////////
 const ENEMY_TYPES = {
   fast:  { hp: 18, speed: 130, dmgToCore: 4, radius: 10, color: "#f0883e", goldMin:2, goldMax:4, attackInterval:0.6 },
-  tank:  { hp: 60, speed: 55,  dmgToCore: 12, radius: 16, color: "#a371f7", goldMin:5, goldMax:9, attackInterval:1.0 }
+  tank:  { hp: 60, speed: 55,  dmgToCore: 12, radius: 16, color: "#a371f7", goldMin:5, goldMax:9, attackInterval:1.0 },
+  // late-game heavy: slow, huge, hits hard, pays well (reuses the spiked tank art, bigger and red)
+  brute: { hp: 170, speed: 42, dmgToCore: 18, radius: 23, color: "#da3633", goldMin:20, goldMax:30, attackInterval:1.5 }
 };
 let enemies = [];
 let spawnTimer = 2.0;
 
+// Periodic horde waves keep the pressure from flat-lining: the first arrives
+// at 2:00 and then one every 90s, each bigger than the last.
+const FIRST_WAVE_AT = 120, WAVE_EVERY = 90;
+let waveNumber = 0;
+let nextWaveAt = FIRST_WAVE_AT;
+
 function currentSpawnInterval(){
-  // starts slow, ramps up, floors out
+  // starts slow, ramps up through 7:00, then keeps tightening to the end
   const t = elapsed;
   const base = 2.4;
-  const min = 0.45;
-  const interval = base - (base-min) * clamp(t/420, 0, 1);
-  return interval;
+  const mid = 0.45;
+  if(t <= 420) return base - (base-mid) * (t/420);
+  return mid - (mid-0.36) * clamp((t-420)/(GAME_LENGTH-420), 0, 1);
 }
 function tankChance(){
   return clamp(0.12 + elapsed/500, 0.12, 0.55);
 }
+function bruteChance(){
+  // none before 4:00, then a growing share of spawns
+  return clamp((elapsed-240)/2400, 0, 0.12);
+}
 function difficultyMul(){
-  return 1 + clamp(elapsed/300, 0, 1.6);
+  // linear ramp, accelerating after the 5:00 mark so maxed defenses still get tested
+  return 1 + elapsed/300 + Math.max(0, elapsed-300)/300 * 0.3;
+}
+function hpScale(){
+  return (0.85 + difficultyMul()*0.35) * (1 + Math.max(0, elapsed-300)/300 * 0.25);
 }
 
-function spawnEnemy(){
-  const type = Math.random() < tankChance() ? "tank" : "fast";
+function spawnEnemy(forcedType){
+  const roll = Math.random();
+  const type = forcedType || (roll < bruteChance() ? "brute" : (roll < bruteChance() + tankChance() ? "tank" : "fast"));
   const def = ENEMY_TYPES[type];
   const spawnRadius = Math.hypot(W,H)/2 + 60;
   const a = rand(0, TAU);
-  const mul = difficultyMul();
+  const scale = hpScale();
   enemies.push({
     type,
     x: CENTER.x + Math.cos(a)*spawnRadius,
     y: CENTER.y + Math.sin(a)*spawnRadius,
-    hp: def.hp * (0.85 + mul*0.35),
-    maxHp: def.hp * (0.85 + mul*0.35),
+    hp: def.hp * scale,
+    maxHp: def.hp * scale,
     speed: def.speed,
     dmgToCore: def.dmgToCore,
     radius: def.radius,
@@ -584,14 +692,63 @@ function dropGold(x,y,min,max){
 }
 
 //////////////////////// INPUT ////////////////////////
+// Drop every held input (focus loss, pause, game end) so nothing stays "stuck down".
+function clearInput(){
+  for(const k in keys) delete keys[k];
+  mouse.down = false;
+  joy.id = null;
+}
+
+function setPaused(p){
+  if(state !== "playing" || p === paused) return;
+  paused = p;
+  clearInput();
+  const overlay = document.getElementById("pauseOverlay");
+  overlay.classList.toggle("hidden", !p);
+  lastTime = 0; // don't count the paused time as a giant frame
+  if(p){
+    document.getElementById("resumeBtn").focus();
+    announce("Game paused");
+  } else {
+    announce("Game resumed");
+  }
+}
+
+// keyboard path for every purchase: 1-6 towers, F forge, R core
+function hotkeyTarget(key){
+  const n = "123456".indexOf(key);
+  if(n >= 0 && n < towerSpots.length) return { kind: "tower", t: towerSpots[n] };
+  if(key === "f") return { kind: "forge" };
+  if(key === "r") return { kind: "core" };
+  return null;
+}
+
 window.addEventListener("keydown", e => {
-  const key = e.key.toLowerCase();
+  const key = (e.key || "").toLowerCase();
+  if(!key) return;
+  if(key === "m" && !e.repeat){
+    Sound.toggleMute();
+    return;
+  }
+  if((key === "p" || key === "escape") && !e.repeat){
+    if(state === "playing") setPaused(!paused);
+    return;
+  }
+  if(key.startsWith("arrow") && state === "playing") e.preventDefault();
+  if(state !== "playing" || paused) return;
   keys[key] = true;
-  if(key === "m" && !e.repeat) Sound.toggleMute();
+  if(!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey){
+    const target = hotkeyTarget(key);
+    if(target) interactWith(target);
+  }
 });
 window.addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
+  const key = (e.key || "").toLowerCase();
+  if(key) keys[key] = false;
 });
+// losing focus (alt-tab, devtools, tab switch) pauses the run and releases held input
+window.addEventListener("blur", () => { clearInput(); setPaused(true); });
+document.addEventListener("visibilitychange", () => { if(document.hidden){ clearInput(); setPaused(true); } });
 
 function canvasToWorld(clientX, clientY){
   const rect = canvas.getBoundingClientRect();
@@ -603,19 +760,49 @@ function canvasToWorld(clientX, clientY){
   };
 }
 
-canvas.addEventListener("mousemove", e => {
+// Pointer Events cover mouse, pen and touch. Mouse/pen: aim + hold to fire as
+// before. Touch: tap a town object to use it, otherwise drag anywhere to move
+// with a floating joystick (the weapon auto-aims, see updateShooting).
+canvas.addEventListener("pointermove", e => {
   const p = canvasToWorld(e.clientX, e.clientY);
+  if(e.pointerType === "touch"){
+    if(e.pointerId === joy.id){ joy.x = p.x; joy.y = p.y; }
+    return;
+  }
+  setTouchMode(false);
   mouse.x = p.x; mouse.y = p.y;
 });
-canvas.addEventListener("mousedown", e => {
+canvas.addEventListener("pointerdown", e => {
+  if(paused) return;
+  const p = canvasToWorld(e.clientX, e.clientY);
+  if(e.pointerType === "touch"){
+    setTouchMode(true);
+    e.preventDefault();
+    if(state !== "playing") return;
+    const target = targetAt(p.x, p.y);
+    if(target){ interactWith(target); return; }
+    if(joy.id === null){
+      joy.id = e.pointerId;
+      joy.ox = joy.x = p.x; joy.oy = joy.y = p.y;
+      try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+    }
+    return;
+  }
   if(e.button !== 0) return;
+  setTouchMode(false);
+  mouse.x = p.x; mouse.y = p.y;
   mouse.down = true;
   tryInteract();
 });
-window.addEventListener("mouseup", e => {
-  if(e.button !== 0) return;
-  mouse.down = false;
-});
+function endPointer(e){
+  if(e.pointerType === "touch"){
+    if(e.pointerId === joy.id) joy.id = null;
+    return;
+  }
+  if(e.type === "pointercancel" || e.button === 0) mouse.down = false;
+}
+window.addEventListener("pointerup", endPointer);
+window.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
 // Every purchase in the game (repair, forge upgrade, tower build/upgrade)
@@ -634,16 +821,49 @@ function spendGold(cost, popupX, popupY, onSuccess){
   return true;
 }
 
-// try click-interaction with town objects; returns true if it consumed the click
+// which town object (if any) sits under a world-space point
+function targetAt(x, y){
+  if(dist(x, y, core.x, core.y) <= core.radius + 6) return { kind: "core" };
+  if(dist(x, y, forge.x, forge.y) <= forge.radius + 6) return { kind: "forge" };
+  for(const t of towerSpots){
+    if(dist(x, y, t.x, t.y) <= t.radius + 8) return { kind: "tower", t };
+  }
+  return null;
+}
+
+// mouse click: interact with whatever is under the cursor; true if it consumed the click
 function tryInteract(){
   if(state !== "playing") return false;
+  const target = targetAt(mouse.x, mouse.y);
+  if(!target) return false;
+  interactWith(target);
+  return true;
+}
 
-  // town core
-  if(dist(mouse.x, mouse.y, core.x, core.y) <= core.radius + 6){
+// shared by mouse click, touch tap and keyboard shortcuts
+function interactWith(target){
+  if(state !== "playing" || paused) return;
+
+  // town core: repair when damaged, otherwise reinforce (gold sink)
+  if(target.kind === "core"){
     if(core.hp >= core.maxHp){
-      popText(core.x, core.y - core.radius, "Full HP", "#8b949e");
-      Sound.play("deny");
-      return true;
+      if(core.upgrades >= core.maxUpgrades){
+        popText(core.x, core.y - core.radius, "MAX", "#8b949e");
+        Sound.play("deny");
+        return;
+      }
+      spendGold(coreUpgradeCost(), core.x, core.y - core.radius, () => {
+        core.upgrades++;
+        core.maxHp += core.upgradeHp;
+        core.hp += core.upgradeHp;
+        core.flash = 0.3;
+        triggerBump(core);
+        Particles.spawn(core.x, core.y, "#e3b341", 14, { life:0.55, size:3, speedMin:70, speedMax:170 });
+        popText(core.x, core.y - core.radius, "Max HP " + core.maxHp, "#e3b341");
+        announce("Core reinforced. Max HP " + core.maxHp);
+        Sound.play("upgrade");
+      });
+      return;
     }
     spendGold(core.repairCost, core.x, core.y - core.radius, () => {
       core.hp = Math.min(core.maxHp, core.hp + core.repairAmount);
@@ -653,18 +873,20 @@ function tryInteract(){
       popText(core.x, core.y - core.radius, "+" + core.repairAmount + " HP", "#3fb950");
       Sound.play("repair");
     });
-    return true;
+    return;
   }
 
   // forge
-  if(dist(mouse.x, mouse.y, forge.x, forge.y) <= forge.radius + 6){
+  if(target.kind === "forge"){
     if(forge.level >= forge.maxLevel){
       popText(forge.x, forge.y - forge.radius, "MAX", "#8b949e");
       Sound.play("deny");
-      return true;
+      return;
     }
     spendGold(forgeCost(), forge.x, forge.y - forge.radius, () => {
       forge.level++;
+      player.weaponLevel = forge.level;
+      announce("Weapon level " + forge.level);
       player.damage = Math.round(10 * (1 + (forge.level-1)*0.35));
       player.fireRate = +(3.0 * (1 + (forge.level-1)*0.18)).toFixed(2);
       forge.flash = 0.3;
@@ -676,46 +898,43 @@ function tryInteract(){
       Camera.hitStop(0.05);
       Sound.play("upgrade");
     });
-    return true;
+    return;
   }
 
-  // tower spots
-  for(const t of towerSpots){
-    if(dist(mouse.x, mouse.y, t.x, t.y) <= t.radius + 8){
-      if(!t.built){
-        spendGold(towerBuildCost(), t.x, t.y - t.radius, () => {
-          t.built = true; t.level = 1;
-          t.flash = 0.3;
-          triggerBump(t);
-          Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:60, speedMax:160 });
-          popText(t.x, t.y - t.radius, "Tower Built", "#58a6ff");
-          Sound.play("build");
-        });
-      } else if(t.level < t.maxLevel){
-        spendGold(towerUpgradeCost(t), t.x, t.y - t.radius, () => {
-          t.level++;
-          t.damage = Math.round(8 * (1 + (t.level-1)*0.6));
-          t.range = 170 + (t.level-1)*22;
-          t.fireRate = +(1.2 * (1 + (t.level-1)*0.35)).toFixed(2);
-          t.flash = 0.3;
-          triggerBump(t);
-          Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:70, speedMax:170 });
-          popText(t.x, t.y - t.radius, "Tower Lv" + t.level, "#58a6ff");
-          Sound.play("upgrade");
-        });
-      } else {
-        popText(t.x, t.y - t.radius, "MAX", "#8b949e");
-        Sound.play("deny");
-      }
-      return true;
-    }
+  // tower spot
+  const t = target.t;
+  if(!t.built){
+    spendGold(towerBuildCost(), t.x, t.y - t.radius, () => {
+      t.built = true; t.level = 1;
+      t.flash = 0.3;
+      triggerBump(t);
+      Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:60, speedMax:160 });
+      popText(t.x, t.y - t.radius, "Tower Built", "#58a6ff");
+      announce("Tower built");
+      Sound.play("build");
+    });
+  } else if(t.level < t.maxLevel){
+    spendGold(towerUpgradeCost(t), t.x, t.y - t.radius, () => {
+      t.level++;
+      t.damage = Math.round(8 * (1 + (t.level-1)*0.6));
+      t.range = 170 + (t.level-1)*22;
+      t.fireRate = +(1.2 * (1 + (t.level-1)*0.35)).toFixed(2);
+      t.flash = 0.3;
+      triggerBump(t);
+      Particles.spawn(t.x, t.y, "#58a6ff", 12, { life:0.5, size:3, speedMin:70, speedMax:170 });
+      popText(t.x, t.y - t.radius, "Tower Lv" + t.level, "#58a6ff");
+      announce("Tower level " + t.level);
+      Sound.play("upgrade");
+    });
+  } else {
+    popText(t.x, t.y - t.radius, "MAX", "#8b949e");
+    Sound.play("deny");
   }
-
-  return false;
 }
 
 function popText(x,y,text,color){
   floatTexts.push({ x, y, text, color, life:1.0, vy:-30 });
+  if(floatTexts.length > 40) floatTexts.shift(); // cap: core-hit popups can pile up in a collapse
 }
 
 //////////////////////// UPDATE ////////////////////////
@@ -745,6 +964,7 @@ function update(dt){
   // smoothed values used purely for rendering (bars, HUD pulse)
   core.displayHp = approach(core.displayHp, core.hp, 0.25, dt);
   goldDisplay = approach(goldDisplay, gold, 0.35, dt);
+  if(core.hp >= core.maxHp * 0.3) lowHpAnnounced = false;
 
   if(core.hp <= 0){
     core.hp = 0;
@@ -758,28 +978,48 @@ function updatePlayer(dt){
   if(keys["s"] || keys["arrowdown"]) dy += 1;
   if(keys["a"] || keys["arrowleft"]) dx -= 1;
   if(keys["d"] || keys["arrowright"]) dx += 1;
+  let mag = 1;
+  if(joy.id !== null){
+    // analog floating joystick: direction from the touch origin, speed by drag distance
+    const jx = joy.x - joy.ox, jy = joy.y - joy.oy;
+    const len = Math.hypot(jx, jy);
+    if(len > 10){
+      dx = jx/len; dy = jy/len;
+      mag = Math.min(1, (len - 10)/50);
+    }
+  }
   if(dx !== 0 || dy !== 0){
     const len = Math.hypot(dx,dy);
     dx /= len; dy /= len;
-    player.x = clamp(player.x + dx*player.speed*dt, player.radius, W-player.radius);
-    player.y = clamp(player.y + dy*player.speed*dt, player.radius, H-player.radius);
+    player.x = clamp(player.x + dx*player.speed*mag*dt, player.radius, W-player.radius);
+    player.y = clamp(player.y + dy*player.speed*mag*dt, player.radius, H-player.radius);
   }
 }
 
 function updateShooting(dt){
   player.fireCooldown -= dt;
-  if(mouse.down && player.fireCooldown <= 0){
-    // if the mouse is currently over an interactive object, don't fire (keep it a build/upgrade click)
-    const overObject =
-      dist(mouse.x, mouse.y, core.x, core.y) <= core.radius + 6 ||
-      dist(mouse.x, mouse.y, forge.x, forge.y) <= forge.radius + 6 ||
-      towerSpots.some(t => dist(mouse.x, mouse.y, t.x, t.y) <= t.radius + 8);
+  if(player.fireCooldown > 0) return;
 
-    if(!overObject){
-      const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-      fireBullet(player.x, player.y, angle, player.damage, player.bulletSpeed, player.range/player.bulletSpeed, false);
-      player.fireCooldown = 1/player.fireRate;
+  let angle = null;
+  if(touchMode){
+    // touch has no cursor: auto-aim at the nearest enemy in range and keep firing
+    let best = player.range;
+    for(const e of enemies){
+      const d = dist(player.x, player.y, e.x, e.y);
+      if(d < best){
+        best = d;
+        angle = Math.atan2(e.y - player.y, e.x - player.x);
+        mouse.x = e.x; mouse.y = e.y; // the character faces its target
+      }
     }
+  } else if(mouse.down && !targetAt(mouse.x, mouse.y)){
+    // not over an interactive object (keeps those clicks as build/upgrade clicks)
+    angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+  }
+
+  if(angle !== null){
+    fireBullet(player.x, player.y, angle, player.damage, player.bulletSpeed, player.range/player.bulletSpeed, false);
+    player.fireCooldown = 1/player.fireRate;
   }
 }
 
@@ -817,9 +1057,9 @@ function updateBullets(dt){
         if(e.hp <= 0){
           dropGold(e.x, e.y, e.goldMin, e.goldMax);
           Particles.spawn(e.x, e.y, e.color, 7, { life:0.45, size:3.2, speedMin:60, speedMax:200 });
-          if(e.type === "tank"){
+          if(e.type !== "fast"){
             // the heavier kill gets a bigger shake and a brief punch of hit-stop
-            Camera.shake(7, 0.28);
+            Camera.shake(e.type === "brute" ? 9 : 7, 0.28);
             Camera.hitStop(0.06);
             Sound.play("tankKill");
           } else {
@@ -851,7 +1091,12 @@ function updateEnemies(dt){
         core.hp -= e.dmgToCore;
         core.flash = 0.25;
         e.attackTimer = e.attackInterval;
-        popText(core.x + rand(-20,20), core.y - core.radius, "-" + e.dmgToCore, "#f85149");
+        // only the heavier hits get a popup; chip damage from runners would flood the screen
+        if(e.dmgToCore >= 10) popText(core.x + rand(-20,20), core.y - core.radius, "-" + e.dmgToCore, "#f85149");
+        if(!lowHpAnnounced && core.hp < core.maxHp * 0.3 && core.hp > 0){
+          lowHpAnnounced = true;
+          announce("Warning: town core below 30 percent health");
+        }
         // small shake per hit; scales gently with the hit's damage but stays
         // subdued since several enemies can be attacking the core at once
         Camera.shake(2 + e.dmgToCore*0.35, 0.16);
@@ -888,6 +1133,27 @@ function updateSpawning(dt){
     spawnEnemy();
     spawnTimer = currentSpawnInterval();
   }
+
+  // horde wave: a burst of enemies from one direction, bigger each time
+  if(elapsed >= nextWaveAt){
+    waveNumber++;
+    nextWaveAt += WAVE_EVERY;
+    const count = 3 + waveNumber * 2;
+    const a = rand(0, TAU);
+    const spawnRadius = Math.hypot(W,H)/2 + 60;
+    for(let i=0;i<count;i++){
+      spawnEnemy();
+      const e = enemies[enemies.length-1];
+      // cluster the horde on one side instead of surrounding the town
+      const aa = a + rand(-0.5, 0.5);
+      const r = spawnRadius + rand(0, 90);
+      e.x = CENTER.x + Math.cos(aa)*r;
+      e.y = CENTER.y + Math.sin(aa)*r;
+    }
+    if(waveNumber >= 5) spawnEnemy("brute");
+    popText(CENTER.x, 70, "Wave " + waveNumber + " incoming!", "#f0883e");
+    announce("Wave " + waveNumber + " incoming");
+  }
 }
 
 function updateFloatTexts(dt){
@@ -901,6 +1167,8 @@ function updateFloatTexts(dt){
 
 //////////////////////// DRAW ////////////////////////
 function draw(){
+  // base transform: map the 1000x680 world onto the (possibly HiDPI) backing store
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   ctx.clearRect(0,0,W,H);
 
   const shake = Camera.offset();
@@ -922,7 +1190,24 @@ function draw(){
   drawVignette();
 
   ctx.restore();
+  drawJoystick();
   drawHoverPrompt(); // screen-space DOM overlay, not part of the shaking world
+}
+
+// floating virtual joystick, shown only while a touch is driving it
+function drawJoystick(){
+  if(joy.id === null) return;
+  const maxR = 60;
+  let jx = joy.x - joy.ox, jy = joy.y - joy.oy;
+  const len = Math.hypot(jx, jy);
+  if(len > maxR){ jx *= maxR/len; jy *= maxR/len; }
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "#e6edf3"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(joy.ox, joy.oy, maxR, 0, TAU); ctx.stroke();
+  ctx.fillStyle = "#e6edf3";
+  ctx.beginPath(); ctx.arc(joy.ox + jx, joy.oy + jy, 24, 0, TAU); ctx.fill();
+  ctx.restore();
 }
 
 // ---- pre-rendered ground layer: painted once, then blitted every frame ----
@@ -1560,7 +1845,7 @@ function drawEnemies(){
     ctx.translate(e.x, e.y + bob);
     ctx.rotate(heading);
     const phase = elapsed*8 + e.bobPhase;
-    if(e.type === "tank") drawTankBody(e, flash, phase);
+    if(e.type !== "fast") drawTankBody(e, flash, phase);
     else drawRunnerBody(e, flash, phase);
     ctx.restore();
 
@@ -1661,7 +1946,7 @@ function drawVignette(){
 
 function drawHoverPrompt(){
   const bubble = document.getElementById("promptBubble");
-  if(state !== "playing"){ bubble.classList.add("hidden"); return; }
+  if(state !== "playing" || paused || touchMode){ bubble.classList.add("hidden"); return; }
 
   let label = null, sx=0, sy=0;
   const rect = canvas.getBoundingClientRect();
@@ -1671,7 +1956,8 @@ function drawHoverPrompt(){
 
   if(dist(mouse.x,mouse.y,core.x,core.y) <= core.radius+6){
     const p = toScreen(core.x, core.y - core.radius - 22);
-    label = core.hp>=core.maxHp ? "Full HP" : ("Repair — " + core.repairCost + "g (+" + core.repairAmount + " HP)");
+    label = core.hp < core.maxHp ? ("Repair — " + core.repairCost + "g (+" + core.repairAmount + " HP)")
+          : (core.upgrades < core.maxUpgrades ? ("Reinforce Core — " + coreUpgradeCost() + "g (+" + core.upgradeHp + " max HP)") : "Core MAX");
     sx=p.x; sy=p.y;
   } else if(dist(mouse.x,mouse.y,forge.x,forge.y) <= forge.radius+6){
     const p = toScreen(forge.x, forge.y - forge.radius - 22);
@@ -1735,7 +2021,14 @@ function updateHud(){
 
   document.getElementById("wpnDmg").textContent = player.damage;
   document.getElementById("wpnRate").textContent = player.fireRate.toFixed(1);
-  document.getElementById("wpnLvl").textContent = player.weaponLevel = forge.level;
+  document.getElementById("wpnLvl").textContent = forge.level;
+
+  const nextWave = Math.max(0, Math.ceil(nextWaveAt - elapsed));
+  document.getElementById("waveText").textContent =
+    state === "playing" ? ("WAVE " + (waveNumber + 1) + " IN " + nextWave + "s") : "SURVIVE";
+  const muteEl = document.getElementById("muteState");
+  muteEl.textContent = Sound.muted ? "SOUND OFF (M)" : "SOUND ON (M)";
+  muteEl.classList.toggle("off", Sound.muted);
 }
 
 //////////////////////// GAME LOOP ////////////////////////
@@ -1749,7 +2042,7 @@ function loop(ts){
   // rather than a stutter, and the timer still counts down in real time.
   const simDt = Camera.applyHitStop(dt);
 
-  if(state === "playing"){
+  if(state === "playing" && !paused){
     update(simDt);
   }
   draw();
@@ -1769,18 +2062,25 @@ function resetGame(){
   Particles.reset();
   floatTexts.length = 0;
   spawnTimer = 2.0;
+  waveNumber = 0; nextWaveAt = FIRST_WAVE_AT;
+  lowHpAnnounced = false;
+  paused = false;
+  clearInput();
   Camera.reset();
 
   player.x = CENTER.x; player.y = CENTER.y + 90;
   player.weaponLevel = 1; player.damage = 10; player.fireRate = 3.0; player.fireCooldown = 0;
 
+  core.maxHp = 100; core.upgrades = 0;
   core.hp = core.maxHp;
   core.displayHp = core.maxHp;
-  forge.level = 1;
+  core.flash = 0; core.bump = 0;
+  forge.level = 1; forge.flash = 0; forge.bump = 0;
 
   for(const t of towerSpots){
     t.built = false; t.level = 0; t.cooldown = 0;
     t.damage = 8; t.range = 170; t.fireRate = 1.2;
+    t.flash = 0; t.bump = 0; t.aim = -Math.PI/2;
   }
 }
 
@@ -1790,10 +2090,14 @@ function startGame(){
   state = "playing";
   document.getElementById("startOverlay").classList.add("hidden");
   document.getElementById("endOverlay").classList.add("hidden");
+  document.getElementById("pauseOverlay").classList.add("hidden");
+  lastTime = 0;
+  announce("Game started. Survive 10 minutes.");
 }
 
 function endGame(won){
   state = won ? "won" : "lost";
+  clearInput();
   Sound.play(won ? "win" : "lose");
   const endOverlay = document.getElementById("endOverlay");
   const title = document.getElementById("endTitle");
@@ -1808,10 +2112,18 @@ function endGame(won){
     text.textContent = "The town core was destroyed at " + Math.floor(elapsed) + " seconds. Rebuild and try again.";
   }
   endOverlay.classList.remove("hidden");
+  document.getElementById("restartBtn").focus();
+  announce(title.textContent + " " + text.textContent);
 }
 
 document.getElementById("startBtn").addEventListener("click", startGame);
 document.getElementById("restartBtn").addEventListener("click", startGame);
+document.getElementById("resumeBtn").addEventListener("click", () => setPaused(false));
+document.getElementById("pauseBtn").addEventListener("click", e => {
+  e.currentTarget.blur(); // so Space/Enter don't re-trigger it mid-game
+  setPaused(true);
+});
+document.getElementById("startBtn").focus();
 
 requestAnimationFrame(loop);
 })();
